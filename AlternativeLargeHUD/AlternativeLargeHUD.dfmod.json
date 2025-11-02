@@ -1,0 +1,22 @@
+{
+    "ModTitle": "Big Red HUD",
+    "ModVersion": "1.0.1",
+    "ModAuthor": "RedRoryOTheGlen",
+    "ContactInfo": "rmufrancisco@gmail.com",
+    "DFUnity_Version": "1.1.1",
+    "ModDescription": "Alternative Large HUD. Recommended to use alongside Retro-Frame in 4:3 Retro Mode.",
+    "GUID": "8665eb43-15ef-4045-9d75-27c612c46d55",
+    "Files": [
+        "Assets/Game/Mods/AlternativeLargeHUD/Scripts/AlternativeLargeHUD.cs",
+        "Assets/Game/Mods/AlternativeLargeHUD/Scripts/AlternativeLargeHUDPatches.cs",
+        "Assets/Game/Mods/AlternativeLargeHUD/AlternativeLargeHUD.dfmod.json",
+        "Assets/Game/Mods/AlternativeLargeHUD/modsettings.json",
+        "Assets/Game/Mods/AlternativeLargeHUD/Textures/112393_1-0.PNG",
+        "Assets/Game/Mods/AlternativeLargeHUD/Textures/112393_2-0.PNG",
+        "Assets/Game/Mods/AlternativeLargeHUD/Textures/112393_0-0.PNG",
+        "Assets/Game/Mods/AlternativeLargeHUD/Textures/112393_0-2.PNG",
+        "Assets/Game/Mods/AlternativeLargeHUD/Textures/112393_2-1.PNG",
+        "Assets/Game/Mods/AlternativeLargeHUD/Textures/112393_1-1.PNG",
+        "Assets/Game/Mods/AlternativeLargeHUD/Textures/112393_0-1.PNG"
+    ]
+}
