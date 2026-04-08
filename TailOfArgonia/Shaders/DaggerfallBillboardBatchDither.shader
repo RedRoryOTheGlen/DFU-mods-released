@@ -20,6 +20,7 @@ Shader "Daggerfall/Dither/BillboardBatch" {
 		_UpVector ("Up Vector (XYZ)", Vector) = (0,1,0,0)
         _DitherPattern ("Dithering Pattern", 2D) = "white" {}
         _DitherStart("Dithering Start", Range (0, 1)) = 0
+        _Brightness("Brightness", Range (0, 2)) = 1
 	}
 	SubShader {
 		Tags { "Queue" = "Transparent" "IgnoreProjector" = "True" "RenderType" = "Transparent" }
@@ -39,6 +40,7 @@ Shader "Daggerfall/Dither/BillboardBatch" {
         sampler2D _DitherPattern;
         float4 _DitherPattern_TexelSize;
         float _DitherStart;
+        float _Brightness;
 
 		struct Input {
 			float2 uv_MainTex;
@@ -67,7 +69,7 @@ Shader "Daggerfall/Dither/BillboardBatch" {
 		{
 			half4 albedo = tex2D(_MainTex, IN.uv_MainTex) * _Color;
 			half3 emission = tex2D(_EmissionMap, IN.uv_EmissionMap).rgb * _EmissionColor;
-			o.Albedo = albedo.rgb - emission; // Emission cancels out other lights
+			o.Albedo = albedo.rgb * _Brightness - emission; // Emission cancels out other lights
 			o.Alpha = albedo.a;
 			o.Normal = UnpackNormal(tex2D(_BumpMap, IN.uv_BumpMap));
 			o.Emission = emission;

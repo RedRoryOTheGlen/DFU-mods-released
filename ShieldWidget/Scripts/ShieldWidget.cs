@@ -92,6 +92,8 @@ public class ShieldWidget : MonoBehaviour
     float recoilScale = 1;
     float recoilSpeed = 1;
     public int recoilCondition = 0;        //SHIELD HIT, SHIELD MISS, SHIELD ATTACK, ANY HIT, ANY MISS, ANY ATTACK
+    bool recoilOffset = true;
+    IEnumerator recoiling;
 
     bool animated;
     float animationTime;
@@ -143,13 +145,14 @@ public class ShieldWidget : MonoBehaviour
     //EOTB compatibility
     bool isInThirdPerson;
 
+    Mod fpsModels;
+    Animator fpsModelsAnimator;
+
     void Awake()
     {
 
         mod.LoadSettingsCallback = LoadSettings;
         mod.LoadSettings();
-
-        ModCompatibilityChecking();
 
         if (Instance == null)
             Instance = this;
@@ -181,6 +184,11 @@ public class ShieldWidget : MonoBehaviour
         mod.IsReady = true;
     }
 
+    private void Start()
+    {
+        ModCompatibilityChecking();
+    }
+
     private void ModCompatibilityChecking()
     {
         //listen to Eye Of The Beholder for changes in POV
@@ -197,6 +205,16 @@ public class ShieldWidget : MonoBehaviour
         if (ceh != null)
         {
             ModManager.Instance.SendModMessage(ceh.Title, "onAttackDamageCalculated", (Action<DaggerfallEntity, DaggerfallEntity, DaggerfallUnityItem, int, int>)OnAttackDamageCalculated);
+        }
+
+        //Check for FPSModels and grab the Animator
+        fpsModels = ModManager.Instance.GetModFromGUID("41284af0-81c7-4630-bbc5-a976efa162a0");
+        if (fpsModels != null)
+        {
+            ModManager.Instance.SendModMessage(fpsModels.Title, "getAnimator", null, (string message, object data) =>
+            {
+                fpsModelsAnimator = (Animator)data;
+            });
         }
     }
 
@@ -273,6 +291,7 @@ public class ShieldWidget : MonoBehaviour
         if (change.HasChanged("Recoil"))
         {
             recoilScale = settings.GetValue<float>("Recoil", "Scale")*2f;
+            recoilOffset = settings.GetValue<bool>("Recoil", "Offset");
             recoilSpeed = settings.GetValue<float>("Recoil", "Speed")*0.5f;
             recoilCondition = settings.GetValue<int>("Recoil", "Condition");
         }
@@ -308,6 +327,7 @@ public class ShieldWidget : MonoBehaviour
         {
             Texture2D texture;
             DaggerfallWorkshop.Utility.AssetInjection.TextureReplacement.TryImportTexture(archive, record, frame, out texture);
+            texture.filterMode = DaggerfallUnity.Instance.MaterialReader.MainFilterMode;
             shieldTextures[i] = texture;
 
             if (frame == 4)
@@ -426,7 +446,7 @@ public class ShieldWidget : MonoBehaviour
                 )
                 return;
 
-            if (Event.current.type == EventType.Repaint) {
+            if (fpsModels == null && Event.current.type == EventType.Repaint) {
                 GUI.depth = 0;
                 DaggerfallUI.DrawTextureWithTexCoords(GetShieldRect(), shieldTexture, curAnimRect, true, GameManager.Instance.WeaponManager.ScreenWeapon.Tint);
             }
@@ -934,6 +954,99 @@ public class ShieldWidget : MonoBehaviour
             }
         }
     }
+    public void SetBlock()
+    {
+        weaponScaleX = (float)screenRect.width / (float)nativeScreenWidth;
+        if (lockAspectRatio)
+            weaponScaleY = weaponScaleX;
+        else
+            weaponScaleY = (float)screenRect.height / (float)nativeScreenHeight;
+
+        if (animated)
+        {
+            if (frameCurrent != 0)
+            {
+                if (animationDirection == 1)
+                {
+                    frameCurrent = 0;
+                    shieldTexture = shieldTextures[indexCurrent + frameCurrent];
+                }
+                else
+                {
+                    if (animating != null)
+                        StopCoroutine(animating);
+                    animating = AnimateShield(4, 0, animationTimeLive);
+                    StartCoroutine(animating);
+                }
+            }
+
+            if (flipped)
+            {
+                shieldPositionCurrent = new Rect(
+                    screenRect.x + screenRect.width - ((screenRect.width * 0.5f) * 1),
+                    screenRect.y + screenRect.height - weaponOffsetHeight - ((screenRect.height * 0.25f) * 0.8f),
+                    shieldTexture.width * scale * weaponScaleX / scaleTextureFactor,
+                    shieldTexture.height * scale * weaponScaleY / scaleTextureFactor
+                    );
+            }
+            else
+            {
+                shieldPositionTarget = new Rect(
+                    screenRect.x + ((screenRect.width * 0.5f) * 1),
+                    screenRect.y + screenRect.height - weaponOffsetHeight - ((screenRect.height * 0.25f) * 0.8f),
+                    shieldTexture.width * scale * weaponScaleX / scaleTextureFactor,
+                    shieldTexture.height * scale * weaponScaleY / scaleTextureFactor
+                    );
+            }
+
+            return;
+        }
+        else if (frameCurrent != 0)
+        {
+            frameCurrent = 0;
+            shieldTexture = shieldTextures[indexCurrent + frameCurrent];
+        }
+
+        if (flipped)
+        {
+            shieldPositionTarget = new Rect(
+                screenRect.x + screenRect.width - ((screenRect.width * 0.5f) * 1),
+                screenRect.y + screenRect.height - weaponOffsetHeight - ((screenRect.height * 0.25f) * 0.8f),
+                shieldTexture.width * scale * weaponScaleX / scaleTextureFactor,
+                shieldTexture.height * scale * weaponScaleY / scaleTextureFactor
+                );
+        }
+        else
+        {
+            shieldPositionTarget = new Rect(
+                screenRect.x + ((screenRect.width * 0.5f) * 1),
+                screenRect.y + screenRect.height - weaponOffsetHeight - ((screenRect.height * 0.25f) * 0.8f),
+                shieldTexture.width * scale * weaponScaleX / scaleTextureFactor,
+                shieldTexture.height * scale * weaponScaleY / scaleTextureFactor
+                );
+        }
+    }
+
+    IEnumerator BlockCoroutine(float magnitude = 0)
+    {
+        SetBlock();
+
+        while (shieldPositionCurrent != shieldPositionTarget)
+            yield return new WaitForEndOfFrame();
+
+        recoilCurrent += Vector2.one * magnitude;
+        PlayImpactSound();
+
+        /*while (recoilCurrent != Vector2.zero)
+            yield return new WaitForEndOfFrame();*/
+
+        yield return new WaitForSeconds(0.5f);
+
+        if (attacked || GameManager.Instance.WeaponManager.Sheathed)
+            SetAttack();
+        else
+            SetGuard();
+    }
 
     IEnumerator AnimateShield(int start, int end, float time)
     {
@@ -966,22 +1079,59 @@ public class ShieldWidget : MonoBehaviour
         if (recoilCondition == 0 || recoilCondition == 3) //HITS ONLY
         {
             if (damage > 0)
-                recoilCurrent += Vector2.one * (0.1f + (damage * 0.01f));
-            else
-                PlayImpactSound();
+            {
+                if (recoilOffset && !attacked)
+                {
+                    if (recoiling != null)
+                        StopCoroutine(recoiling);
+                    recoiling = BlockCoroutine(0.1f + (damage * 0.01f));
+                    StartCoroutine(recoiling);
+                }
+                else
+                {
+                    recoilCurrent += Vector2.one * (0.1f + (damage * 0.01f));
+                    PlayImpactSound();
+                }
+                if (fpsModelsAnimator != null)
+                    fpsModelsAnimator.Play(GetShieldAnimationGroup(shield) + "Recoil",1);
+            }
         }
         else if (recoilCondition == 1 || recoilCondition == 4) //MISSES ONLY
         {
             if (damage < 1)
             {
-                recoilCurrent += Vector2.one * (UnityEngine.Random.Range(1, 2) * 0.1f);
-                PlayImpactSound();
+                if (recoilOffset && !attacked)
+                {
+                    if (recoiling != null)
+                        StopCoroutine(recoiling);
+                    recoiling = BlockCoroutine(0.1f + (damage * 0.01f));
+                    StartCoroutine(recoiling);
+                }
+                else
+                {
+                    recoilCurrent += Vector2.one * (0.1f + (damage * 0.01f));
+                    PlayImpactSound();
+                }
+                if (fpsModelsAnimator != null)
+                    fpsModelsAnimator.Play(GetShieldAnimationGroup(shield) + "Recoil", 1);
             }
         }
         else
         {
-            recoilCurrent += Vector2.one * (0.1f + (damage * 0.01f));
-            PlayImpactSound();
+            if (recoilOffset && !attacked)
+            {
+                if (recoiling != null)
+                    StopCoroutine(recoiling);
+                recoiling = BlockCoroutine(0.1f + (damage * 0.01f));
+                StartCoroutine(recoiling);
+            }
+            else
+            {
+                recoilCurrent += Vector2.one * (0.1f + (damage * 0.01f));
+                PlayImpactSound();
+            }
+            if (fpsModelsAnimator != null)
+                fpsModelsAnimator.Play(GetShieldAnimationGroup(shield) + "Recoil", 1);
         }
 
         //check if condition has changed
@@ -996,24 +1146,10 @@ public class ShieldWidget : MonoBehaviour
             conditionPrevious = conditionCurrent;
     }
 
-    public void PlaySound()
-    {
-        int sound;
-        if (UnityEngine.Random.value > 0.5f)
-        {
-            sound = (int)SoundClips.Hit1 + UnityEngine.Random.Range(0, 5);
-        }
-        else
-        {
-            sound = (int)SoundClips.Parry1 + UnityEngine.Random.Range(0, 9);
-        }
-        audioSource.PlayOneShot(sound, 1, 1.1f);
-    }
-
     public void PlayImpactSound()
     {
         int sound = (int)SoundClips.Parry1 + UnityEngine.Random.Range(0, 9);
-        audioSource.PlayOneShot(sound, 1, 1.1f);
+        audioSource.PlayOneShot(sound, 0, 1.1f);
     }
 
     public bool IsPartShielded(DaggerfallUnityItem shield, int struckBodyPart)
@@ -1029,6 +1165,24 @@ public class ShieldWidget : MonoBehaviour
             }
         }
         return shielded;
+    }
+
+    string GetShieldAnimationGroup(DaggerfallUnityItem shield)
+    {
+        if (shield != null)
+        {
+            switch (shield.TemplateIndex)
+            {
+                case (int)Armor.Buckler:
+                    return "ShieldHand_";
+                case (int)Armor.Round_Shield:
+                case (int)Armor.Kite_Shield:
+                case (int)Armor.Tower_Shield:
+                    return "ShieldArm_";
+            }
+        }
+
+        return "Unarmed_";
     }
 
 }

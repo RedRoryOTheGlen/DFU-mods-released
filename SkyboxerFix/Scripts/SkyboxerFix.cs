@@ -53,6 +53,9 @@ namespace SkyboxerFixMod
             {
                 if (playerCamera.fieldOfView != skyCamera.fieldOfView)
                     skyCamera.fieldOfView = playerCamera.fieldOfView;
+
+                if (playerCamera.transform.eulerAngles != skyCamera.transform.eulerAngles)
+                    skyCamera.transform.eulerAngles = playerCamera.transform.eulerAngles;
             }
         }
     }

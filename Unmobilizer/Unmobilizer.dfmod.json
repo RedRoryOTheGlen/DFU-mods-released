@@ -1,0 +1,14 @@
+{
+    "ModTitle": "DaggerCrawl",
+    "ModVersion": "1.1.1",
+    "ModAuthor": "RedRoryOTheGlen",
+    "ContactInfo": "rmufrancisco@gmail.com",
+    "DFUnity_Version": "1.1.1",
+    "ModDescription": "Adds directional modifiers to player movement.",
+    "GUID": "00593172-9595-4f94-a661-17796516e550",
+    "Files": [
+        "Assets/Game/Mods/Unmobilizer/Scripts/Unmobilizer.cs",
+        "Assets/Game/Mods/Unmobilizer/modsettings.json",
+        "Assets/Game/Mods/Unmobilizer/Unmobilizer.dfmod.json"
+    ]
+}

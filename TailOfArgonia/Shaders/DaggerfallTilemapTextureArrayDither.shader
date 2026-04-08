@@ -32,10 +32,17 @@ Shader "Daggerfall/Dither/TilemapTextureArray" {
         _MaxIndex("Max Tileset Index", Int) = 255
         _DitherPattern ("Dithering Pattern", 2D) = "white" {}
         _DitherStart("Dithering Start", Range (0, 1)) = 0
+        _Brightness("Brightness", Range (0, 2)) = 1
     }
     SubShader {
         Tags { "RenderType"="Opaque" }
         LOD 200
+        
+        Stencil
+        {
+            Ref 2
+            Comp NotEqual
+        }
         
         CGPROGRAM
         #pragma target 3.5
@@ -66,6 +73,7 @@ Shader "Daggerfall/Dither/TilemapTextureArray" {
         sampler2D _DitherPattern;
         float4 _DitherPattern_TexelSize;
         float _DitherStart;
+        float _Brightness;
 
         struct Input
         {
@@ -129,7 +137,7 @@ Shader "Daggerfall/Dither/TilemapTextureArray" {
 
             // Albedo (colour) map
             half4 albedo = UNITY_SAMPLE_TEX2DARRAY_SAMPLER_LOD(_TileTexArr, _TileTexArr, uv3, mipMapLevel);
-            o.Albedo = albedo.rgb;
+            o.Albedo = albedo.rgb * _Brightness;
 
 			o.Alpha = albedo.a;
 

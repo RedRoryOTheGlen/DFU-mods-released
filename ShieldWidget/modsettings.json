@@ -349,6 +349,13 @@
                     "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.SliderFloatKey"
                 },
                 {
+                    "Value": false,
+                    "Name": "Offset",
+                    "Description": "Whether the shield should be moved to the center when recoiling",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
                     "Min": 0.0,
                     "Max": 2.0,
                     "Value": 1.0,

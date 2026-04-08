@@ -1,0 +1,12 @@
+{
+    "ModTitle": "Skulduggery Fixer",
+    "ModVersion": "1.0",
+    "ModAuthor": "RedRoryOTheGlen",
+    "ContactInfo": "rmufrancisco@gmail.com",
+    "DFUnity_Version": "1.1.1",
+    "ModDescription": "Gets rid of Skulduggery's exception log spam when inside your ship or city walls.",
+    "GUID": "c21c9980-37f6-4569-b2ae-4d338be1570a",
+    "Files": [
+        "Assets/Game/Mods/ThiefOverhaulFixer/Scripts/ThiefOverhaulFixer.cs"
+    ]
+}

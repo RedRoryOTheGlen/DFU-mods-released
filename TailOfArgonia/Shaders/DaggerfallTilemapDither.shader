@@ -30,6 +30,7 @@ Shader "Daggerfall/Dither/Tilemap" {
 		_GutterSize("Gutter Size (in pixels)", Float) = 32.0
         _DitherPattern ("Dithering Pattern", 2D) = "white" {}
         _DitherStart("Dithering Start", Range (0, 1)) = 0
+        _Brightness("Brightness", Range (0, 2)) = 1
 	}
 	SubShader {
 		//Tags { "RenderType"="Opaque" }
@@ -53,6 +54,7 @@ Shader "Daggerfall/Dither/Tilemap" {
         sampler2D _DitherPattern;
         float4 _DitherPattern_TexelSize;
         float _DitherStart;
+        float _Brightness;
 
 		struct Input
 		{
@@ -79,7 +81,7 @@ Shader "Daggerfall/Dither/Tilemap" {
 			// Sample based on gradient and set output
 			float2 uvr = unwrappedUV / _GutterSize;
 			half4 c = tex2Dgrad(_TileAtlasTex, uv, ddx(uvr), ddy(uvr));
-			o.Albedo = c.rgb;
+			o.Albedo = c.rgb * _Brightness;
             
 			o.Alpha = c.a;
             

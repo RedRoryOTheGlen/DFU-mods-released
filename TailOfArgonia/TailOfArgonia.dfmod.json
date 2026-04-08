@@ -1,6 +1,6 @@
 {
     "ModTitle": "Tail of Argonia",
-    "ModVersion": "1.3.3",
+    "ModVersion": "1.5.2",
     "ModAuthor": "RedRoryOTheGlen",
     "ContactInfo": "rmufrancisco@gmail.com",
     "DFUnity_Version": "1.1.1",
@@ -9,14 +9,18 @@
     "Files": [
         "Assets/Game/Mods/TailOfArgonia/Scripts/TailOfArgonia.cs",
         "Assets/Game/Mods/TailOfArgonia/modsettings.json",
-        "Assets/Game/Mods/TailOfArgonia/Textures/BayerDither8x8.png",
-        "Assets/Game/Mods/TailOfArgonia/Textures/BayerDither4x4.png",
         "Assets/Game/Mods/TailOfArgonia/Shaders/DaggerfallDefaultDither.shader",
         "Assets/Game/Mods/TailOfArgonia/Shaders/DaggerfallTilemapTextureArrayDither.shader",
         "Assets/Game/Mods/TailOfArgonia/Shaders/DaggerfallTilemapDither.shader",
         "Assets/Game/Mods/TailOfArgonia/Shaders/DaggerfallBillboardBatchNoShadowsDither.shader",
         "Assets/Game/Mods/TailOfArgonia/Shaders/DaggerfallBillboardBatchDither.shader",
         "Assets/Game/Mods/TailOfArgonia/Shaders/DaggerfallBillboardDither.shader",
-        "Assets/Game/Mods/TailOfArgonia/TailOfArgonia.dfmod.json"
+        "Assets/Game/Mods/TailOfArgonia/TailOfArgonia.dfmod.json",
+        "Assets/Game/Mods/TailOfArgonia/Textures/BayerDither8x8.png",
+        "Assets/Game/Mods/TailOfArgonia/Textures/BayerDither2x2.png",
+        "Assets/Game/Mods/TailOfArgonia/Textures/BayerDither4x4.png",
+        "Assets/Game/Mods/TailOfArgonia/Textures/BayerDither16x16.png",
+        "Assets/Game/Mods/TailOfArgonia/Shaders/Particle VertexLit Blended.shader",
+        "Assets/Game/Mods/TailOfArgonia/Shaders/Alpha-VertexLit.shader"
     ]
 }

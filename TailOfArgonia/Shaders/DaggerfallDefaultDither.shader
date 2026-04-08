@@ -21,6 +21,7 @@ Shader "Daggerfall/Dither/Default" {
         _Smoothness("Smoothness", Range (0, 1)) = 0
         _DitherPattern ("Dithering Pattern", 2D) = "white" {}
         _DitherStart("Dithering Start", Range (0, 1)) = 0
+        _Brightness("Brightness", Range (0, 2)) = 1
     }
     SubShader {
         Tags { "RenderType" = "Opaque" }
@@ -55,6 +56,7 @@ Shader "Daggerfall/Dither/Default" {
         sampler2D _DitherPattern;
         float4 _DitherPattern_TexelSize;
         float _DitherStart;
+        float _Brightness;
 
     	struct Input {
             float2 uv_MainTex;
@@ -101,6 +103,8 @@ Shader "Daggerfall/Dither/Default" {
                 o.Gloss = 1 - metallicMap.r;
                 o.Specular = _Smoothness;
             #endif
+
+            o.Albedo = o.Albedo * _Brightness;
 
             // Assign alpha
             o.Alpha = albedo.a;

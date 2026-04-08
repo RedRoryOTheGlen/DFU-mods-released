@@ -4,9 +4,11 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering.PostProcessing;
+using DaggerfallConnect;
 using DaggerfallWorkshop;
 using DaggerfallWorkshop.Game;
 using DaggerfallWorkshop.Game.Weather;
+using DaggerfallWorkshop.Game.Utility;
 using DaggerfallWorkshop.Game.Utility.ModSupport;
 using DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings;
 using DaggerfallWorkshop.Game.Serialization;
@@ -22,8 +24,14 @@ public class TailOfArgonia : MonoBehaviour
     PlayerEnterExit playerEnterExit;
     DaggerfallSky sky;
 
+    int[] frameRates = new int[] { 12, 24, 30, 60, -1};
+    int frameRateIndex = 4;
+    bool vsyncDefault;
+
     bool view;
     int viewDistance = 64;
+    int viewDistanceInterior = 64;
+    int viewDistanceDungeon = 64;
     int[] viewDistances = new int[] { 32, 64, 128, 256, 512, 1024, 2048, 4096 };
 
     bool fog;
@@ -31,8 +39,15 @@ public class TailOfArgonia : MonoBehaviour
     float fogEndDistanceMultiplier = 0.8f;
     float fogDensityModifier = 1;
     float[] fogDensities = new float[] { 0.1f, 0.05f, 0.025f, 0.0125f, 0.00625f, 0.003125f, 0.0015625f, 0.00078125f };
+    bool fogInteriorColored = false;
+    float fogInteriorColorScale = 0.1f;
+    float fogInteriorBrightness = 0.1f;
+    bool fogDungeonColored = false;
+    float fogDungeonColorScale = 0.1f;
+    float fogDungeonBrightness = 0.1f;
 
     int[] terrainDistances = new int[] { 1, 1, 2, 2, 3, 3, 4, 4 };
+    int terrainDistanceOverride = 0;
 
     public static WeatherManager.FogSettings SunnyFogSettings = new WeatherManager.FogSettings { fogMode = FogMode.Linear, density = 0.0f, startDistance = 0, endDistance = 2560, excludeSkybox = true };
     public static WeatherManager.FogSettings SunnyFogSettingsDefault;
@@ -44,6 +59,10 @@ public class TailOfArgonia : MonoBehaviour
     public static WeatherManager.FogSettings SnowyFogSettingsDefault;
     public static WeatherManager.FogSettings HeavyFogSettings = new WeatherManager.FogSettings { fogMode = FogMode.Linear, density = 0.0f, startDistance = 0, endDistance = 1024, excludeSkybox = true };
     public static WeatherManager.FogSettings HeavyFogSettingsDefault;
+    public static WeatherManager.FogSettings InteriorFogSettings = new WeatherManager.FogSettings { fogMode = FogMode.Linear, density = 0.0f, startDistance = 0, endDistance = 1024, excludeSkybox = true };
+    public static WeatherManager.FogSettings InteriorFogSettingsDefault;
+    public static WeatherManager.FogSettings DungeonFogSettings = new WeatherManager.FogSettings { fogMode = FogMode.Linear, density = 0.0f, startDistance = 0, endDistance = 1024, excludeSkybox = true };
+    public static WeatherManager.FogSettings DungeonFogSettingsDefault;
 
     FogMode currentFogMode;
 
@@ -52,10 +71,12 @@ public class TailOfArgonia : MonoBehaviour
     bool smoothClip;
     float smoothClipStartDistance = 0.75f;
     float smoothClipLastUpdate;
+    int startCount = 0;
 
-    public Texture textureDitherSmall;
-    public Texture textureDitherLarge;
-    int textureDitherSize;
+    public Texture[] ditherSizeTextures;
+    int ditherSize;
+
+    public float textureBrightness = 1f;
 
     public Shader shaderDefault;
     public Shader shaderBillboard;
@@ -64,10 +85,14 @@ public class TailOfArgonia : MonoBehaviour
     public Shader shaderTilemap;
     public Shader shaderTilemapTextureArray;
 
+    public Shader shaderParticleLit;
+    public Shader shaderParticleEmissive;
+
     bool shearing;
     Camera shearingEye;
     PostProcessLayer shearingPostprocessingLayer;
     bool isShearing;
+    bool shearingCrosshairAlwaysVisible;
     KeyCode shearingKeyCode;
 
     const string defaultCrosshairFilename = "Crosshair";
@@ -87,8 +112,33 @@ public class TailOfArgonia : MonoBehaviour
     Light sunLight;
     float sunLightScale = 1;
     float moonLightScale = 1;
+    float MoonLightScale
+    {
+        get
+        {
+            return moonLightScale * moonPhaseScale;
+        }
+    }
     int lightColor;             //0 = sky, 1 = fog
+    float LightColorScale
+    {
+        get
+        {
+            if (playerEnterExit.IsPlayerInsideDungeon)
+                return lightDungeonColorScale;
+            else if (playerEnterExit.IsPlayerInside)
+                return lightInteriorColorScale;
+            else
+                return lightColorScale;
+        }
+    }
     float lightColorScale = 1;
+    float lightInteriorColorScale = 1;
+    float lightDungeonColorScale = 1;
+
+    float moonPhaseScale = 1;
+    LunarPhases moonPhaseMassar = LunarPhases.None;
+    LunarPhases moonPhaseSecunda = LunarPhases.None;
 
     float ambientLightExteriorDayScale = 1;
     float ambientLightExteriorNightScale = 1;
@@ -113,11 +163,38 @@ public class TailOfArgonia : MonoBehaviour
     float SnowSunlightScaleDefault = 0.45f;
     float WinterSunlightScaleDefault = 0.65f;
 
+    float SeasonalSunlightScale = 1;
+
+    bool sunShadowsHard = true;
+
     Mod DynamicSkies;
 
-
-
     IEnumerator worldUpdateMessage;
+
+    FieldInfo DaggerfallSkyMainCamera;
+
+    //weather stuff
+    bool weather = false;
+    bool weatherPixel = false;
+    bool weatherShader = false;
+    float weatherEmissionRain = 0.5f;
+    float weatherEmissionSnow = 0.5f;
+    bool weatherSplashSnow = true;
+    bool weatherSplashRain = true;
+
+    ParticleSystem rainParticle;
+    ParticleSystemRenderer rainParticleRenderer;
+    ParticleSystem rainParticleSplash;
+    ParticleSystemRenderer rainParticleSplashRenderer;
+    ParticleSystem snowParticle;
+    ParticleSystemRenderer snowParticleRenderer;
+    ParticleSystem snowParticleSplash;
+    ParticleSystemRenderer snowParticleSplashRenderer;
+    //materials
+    Material rainDefaultMaterial;
+    Material snowDefaultMaterial;
+    Material rainPixelMaterial;
+    Material snowPixelMaterial;
 
     static Mod mod;
     [Invoke(StateManager.StateTypes.Start, 0)]
@@ -129,17 +206,35 @@ public class TailOfArgonia : MonoBehaviour
         var go = new GameObject(mod.Title);
         TailOfArgonia toa = go.AddComponent<TailOfArgonia>();
 
-        toa.textureDitherSmall = mod.GetAsset<Texture>("Textures/BayerDither4x4.png");
-        toa.textureDitherLarge = mod.GetAsset<Texture>("Textures/BayerDither8x8.png");
+        toa.ditherSizeTextures = new Texture[4];
+        toa.ditherSizeTextures[0] = mod.GetAsset<Texture>("Textures/BayerDither2x2.png");
+        toa.ditherSizeTextures[1] = mod.GetAsset<Texture>("Textures/BayerDither4x4.png");
+        toa.ditherSizeTextures[2] = mod.GetAsset<Texture>("Textures/BayerDither8x8.png");
+        toa.ditherSizeTextures[3] = mod.GetAsset<Texture>("Textures/BayerDither16x16.png");
+
+
         toa.shaderDefault = mod.GetAsset<Shader>("Shaders/DaggerfallDefaultDither.shader");
         toa.shaderBillboard = mod.GetAsset<Shader>("Shaders/DaggerfallBillboardDither.shader");
         toa.shaderBillboardBatch = mod.GetAsset<Shader>("Shaders/DaggerfallBillboardBatchDither.shader");
         toa.shaderBillboardBatchNoShadows = mod.GetAsset<Shader>("Shaders/DaggerfallBillboardBatchNoShadowsDither.shader");
         toa.shaderTilemap = mod.GetAsset<Shader>("Shaders/DaggerfallTilemapDither.shader");
         toa.shaderTilemapTextureArray = mod.GetAsset<Shader>("Shaders/DaggerfallTilemapTextureArrayDither.shader");
+
+        toa.shaderParticleLit = mod.GetAsset<Shader>("Shaders/Alpha-VertexLit.shader");
+        toa.shaderParticleEmissive = mod.GetAsset<Shader>("Shaders/Particle VertexLit Blended.shader");
+
+        ModSettings settings = mod.GetSettings();
+        FilterMode filterMode = (FilterMode)settings.GetValue<int>("Other", "InterfaceFilterMode");
+        DaggerfallUI.Instance.GlobalFilterMode = filterMode;
+        DaggerfallUnity.Instance.MaterialReader.MainFilterMode = filterMode;
+        DaggerfallUnity.Instance.MaterialReader.SkyFilterMode = filterMode;
     }
     private void LoadSettings(ModSettings settings, ModSettingsChange change)
     {
+        if (change.HasChanged("FrameRate"))
+        {
+            frameRateIndex = settings.GetValue<int>("FrameRate", "Target");
+        }
         if (change.HasChanged("Modules"))
         {
             view = settings.GetValue<bool>("Modules", "ViewDistance");
@@ -151,27 +246,39 @@ public class TailOfArgonia : MonoBehaviour
         if (change.HasChanged("ViewDistance"))
         {
             viewDistance = settings.GetValue<int>("ViewDistance", "Maximum");
+            viewDistanceInterior = settings.GetValue<int>("ViewDistance", "InteriorMaximum");
+            viewDistanceDungeon = settings.GetValue<int>("ViewDistance", "DungeonMaximum");
+            terrainDistanceOverride = settings.GetValue<int>("ViewDistance", "TerrainDistanceOverride");
         }
         if (change.HasChanged("Fog"))
         {
             fogStartDistanceMultiplier = settings.GetValue<int>("Fog", "LinearStartDistance") * 0.01f;
             fogEndDistanceMultiplier = settings.GetValue<int>("Fog", "LinearEndDistance") * 0.01f;
             fogDensityModifier = settings.GetValue<float>("Fog", "ExponentialDensityOffset");
+            fogInteriorColored = settings.GetValue<bool>("Fog", "InteriorFogColor");
+            fogInteriorColorScale = settings.GetValue<float>("Fog", "InteriorFogColorScale");
+            fogInteriorBrightness = settings.GetValue<float>("Fog", "InteriorFogBrightness");
+            fogDungeonColored = settings.GetValue<bool>("Fog", "DungeonFogColor");
+            fogDungeonColorScale = settings.GetValue<float>("Fog", "DungeonFogColorScale");
+            fogDungeonBrightness = settings.GetValue<float>("Fog", "DungeonFogBrightness");
         }
 
         if (change.HasChanged("SmoothClipping"))
         {
             smoothClipStartDistance = settings.GetValue<int>("SmoothClipping", "StartDistance")*0.01f;
-            textureDitherSize = settings.GetValue<int>("SmoothClipping", "DitherSize");
+            ditherSize = settings.GetValue<int>("SmoothClipping", "DitherSize");
         }
 
         if (change.HasChanged("ImprovedAmbientLight"))
         {
+            sunShadowsHard = settings.GetValue<bool>("ImprovedAmbientLight", "SunHardShadows");
             sunLightScale = settings.GetValue<float>("ImprovedAmbientLight", "SunLightScale");
             moonLightScale = settings.GetValue<float>("ImprovedAmbientLight", "MoonLightScale");
             lightColor = settings.GetValue<int>("ImprovedAmbientLight", "LightColor");
             lightColorScale = settings.GetValue<float>("ImprovedAmbientLight", "LightColorScale");
-            ambientLightExteriorDayScale = settings.GetValue<float>("ImprovedAmbientLight", "ExteriorDayLightScale");
+            lightInteriorColorScale = settings.GetValue<float>("ImprovedAmbientLight", "InteriorLightColorScale");
+            lightDungeonColorScale = settings.GetValue<float>("ImprovedAmbientLight", "DungeonLightColorScale");
+            ambientLightExteriorDayScale = settings.GetValue<float>("ImprovedAmbientLight", "ExteriorDayLightScale")*2;
             ambientLightExteriorNightScale = settings.GetValue<float>("ImprovedAmbientLight", "ExteriorNightLightScale");
             ambientLightInteriorDayScale = settings.GetValue<float>("ImprovedAmbientLight", "InteriorDayLightScale");
             ambientLightInteriorNightScale = settings.GetValue<float>("ImprovedAmbientLight", "InteriorNightLightScale");
@@ -181,7 +288,19 @@ public class TailOfArgonia : MonoBehaviour
 
         if (change.HasChanged("YShearing"))
         {
+            shearingCrosshairAlwaysVisible = settings.GetValue<bool>("YShearing", "CrosshairAlwaysVisible");
             shearingKeyCode = SetKeyFromText(settings.GetString("YShearing", "ToggleInput"));
+        }
+
+        if (change.HasChanged("WeatherParticles"))
+        {
+            weather = settings.GetValue<bool>("WeatherParticles", "Enable");
+            weatherPixel = settings.GetValue<bool>("WeatherParticles", "PixelTexture");
+            weatherShader = settings.GetValue<bool>("WeatherParticles", "LitShader");
+            weatherEmissionRain = (float)settings.GetValue<int>("WeatherParticles", "LitRainEmission") * 0.01f;
+            weatherEmissionSnow = (float)settings.GetValue<int>("WeatherParticles", "LitSnowEmission") * 0.01f;
+            weatherSplashRain = settings.GetValue<bool>("WeatherParticles", "RainSplashEffect");
+            weatherSplashSnow = settings.GetValue<bool>("WeatherParticles", "SnowSplashEffect");
         }
 
         if (change.HasChanged("Debug"))
@@ -189,8 +308,40 @@ public class TailOfArgonia : MonoBehaviour
             debugShowMessages = settings.GetValue<bool>("Debug", "ShowMessages");
         }
 
-        if (change.HasChanged("Modules") || change.HasChanged("ViewDistance") || change.HasChanged("ImprovedAmbientLight") || change.HasChanged("Fog") || change.HasChanged("SmoothClipping"))
+        if (change.HasChanged("Other"))
         {
+            FilterMode filterMode = (FilterMode)settings.GetValue<int>("Other", "InterfaceFilterMode");
+            DaggerfallUI.Instance.GlobalFilterMode = filterMode;
+            DaggerfallUnity.Instance.MaterialReader.MainFilterMode = filterMode;
+            DaggerfallUnity.Instance.MaterialReader.SkyFilterMode = filterMode;
+        }
+
+        if (change.HasChanged("FrameRate") || change.HasChanged("Modules") || change.HasChanged("ViewDistance") || change.HasChanged("ImprovedAmbientLight") || change.HasChanged("Fog") || change.HasChanged("SmoothClipping") || change.HasChanged("WeatherParticles"))
+        {
+            if (frameRateIndex != 4)
+            {
+                //disable vsync
+                DaggerfallUnity.Settings.VSync = false;
+                if (DaggerfallUnity.Settings.VSync)
+                    QualitySettings.vSyncCount = 1;
+                else
+                    QualitySettings.vSyncCount = 0;
+
+                DaggerfallUnity.Settings.TargetFrameRate = frameRates[frameRateIndex];
+                Application.targetFrameRate = DaggerfallUnity.Settings.TargetFrameRate;
+            }
+            else
+            {
+                DaggerfallUnity.Settings.VSync = vsyncDefault;
+                if (DaggerfallUnity.Settings.VSync)
+                    QualitySettings.vSyncCount = 1;
+                else
+                    QualitySettings.vSyncCount = 0;
+
+                DaggerfallUnity.Settings.TargetFrameRate = -1;
+                Application.targetFrameRate = -1;
+            }
+
             if (view)
                 ApplyViewDistance();
             else
@@ -201,14 +352,21 @@ public class TailOfArgonia : MonoBehaviour
             else
                 ResetFog();
 
-            if (smoothClip)
-                ApplyFadeShader();
+            if (startCount > 0)
+            {
+                if (smoothClip)
+                    ApplyFadeShader();
+                else
+                    RemoveFadeShader();
+            }
             else
-                RemoveFadeShader();
+                startCount++;
 
             ToggleImprovedExteriorLighting(ambientLighting);
 
             isShearing = shearing;
+
+            SetUpWeatherParticles();
         }
     }
 
@@ -217,22 +375,30 @@ public class TailOfArgonia : MonoBehaviour
         DynamicSkies = ModManager.Instance.GetModFromGUID("53a9b8f5-6271-4f74-9b8b-9220dd105a04");
     }
 
-    void Awake()
+    void Start()
     {
         if (Instance == null)
             Instance = this;
+
+        vsyncDefault = DaggerfallUnity.Settings.VSync;
 
         weatherManager = GameManager.Instance.WeatherManager;
         worldTime = DaggerfallUnity.Instance.WorldTime;
         playerEnterExit = GameManager.Instance.PlayerEnterExit;
         playerAmbientLight = GameManager.Instance.PlayerObject.GetComponent<PlayerAmbientLight>();
+
         sky = GameManager.Instance.SkyRig;
+        DaggerfallSkyMainCamera = sky.GetType().GetField("mainCamera", BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static | BindingFlags.IgnoreCase | BindingFlags.Instance);
+        if (DaggerfallSkyMainCamera != null)
+            Debug.Log("TAIL OF ARGONIA - FOUND DAGGERFALL SKY MAIN CAMERA FIELD!");
 
         SunnyFogSettingsDefault = weatherManager.SunnyFogSettings;
         OvercastFogSettingsDefault = weatherManager.OvercastFogSettings;
         RainyFogSettingsDefault = weatherManager.RainyFogSettings;
         SnowyFogSettingsDefault = weatherManager.SnowyFogSettings;
         HeavyFogSettingsDefault = weatherManager.HeavyFogSettings;
+        InteriorFogSettingsDefault = weatherManager.InteriorFogSettings;
+        DungeonFogSettingsDefault = weatherManager.DungeonFogSettings;
 
         SpawnShearingCamera();
 
@@ -243,12 +409,16 @@ public class TailOfArgonia : MonoBehaviour
         PlayerEnterExit.OnTransitionDungeonInterior += ApplyViewDistance_OnTransitionInterior;
         PlayerEnterExit.OnTransitionExterior += ApplyViewDistance_OnTransitionExterior;
         PlayerEnterExit.OnTransitionDungeonExterior += ApplyViewDistance_OnTransitionExterior;
+        SaveLoadManager.OnLoad += ApplyViewDistance_OnLoad;
 
         StreamingWorld.OnUpdateTerrainsEnd += ApplyFadeShader_OnUpdateTerrainsEnd;
         PlayerEnterExit.OnTransitionExterior += ApplyFadeShader_OnTransitionExterior;
         PlayerEnterExit.OnTransitionDungeonExterior += ApplyFadeShader_OnTransitionExterior;
         SaveLoadManager.OnLoad += ApplyFadeShader_OnLoad;
         DaggerfallTravelPopUp.OnPostFastTravel += ApplyFadeShader_OnPostFastTravel;
+
+        /*GameManager.OnEnemySpawn += ApplyFadeShader_OnEnemySpawn;
+        PopulationManager.OnMobileNPCCreate += ApplyFadeShader_OnMobileNPCCreate;*/
 
         PlayerEnterExit.OnTransitionInterior += ToggleShearingCamera_OnTransition;
         PlayerEnterExit.OnTransitionDungeonInterior += ToggleShearingCamera_OnTransition;
@@ -259,14 +429,164 @@ public class TailOfArgonia : MonoBehaviour
         sunLight = GameManager.Instance.SunlightManager.GetComponent<Light>();
 
         CrosshairTexture = DaggerfallUI.GetTextureFromResources(defaultCrosshairFilename, out crosshairSize);
-        crosshairSize /= 16;
-            
+
         mod.LoadSettingsCallback = LoadSettings;
         mod.LoadSettings();
+
+        //reinitialize terrain array to allow for more terrains
+        FieldInfo terrainArray = GameManager.Instance.StreamingWorld.GetType().GetField("terrainArray", BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static | BindingFlags.IgnoreCase | BindingFlags.Instance);
+        if (terrainArray != null)
+        {
+            Debug.Log("TAIL OF ARGONIA - FOUND TERRAIN ARRAY FIELD");
+            terrainArray.SetValue(GameManager.Instance.StreamingWorld, new DaggerfallWorkshop.StreamingWorld.TerrainDesc[1089]);
+        }
 
         ModCompatibilityChecking();
 
         mod.IsReady = true;
+    }
+
+    void SetUpWeatherParticles()
+    {
+        //on first launch, get particle emitters
+        if (snowParticle == null)
+        {
+            rainParticle = GameManager.Instance.WeatherManager.PlayerWeather.RainParticles.GetComponent<ParticleSystem>();
+            rainParticleRenderer = rainParticle.GetComponent<ParticleSystemRenderer>();
+            rainDefaultMaterial = rainParticleRenderer.sharedMaterial;
+            rainParticleSplash = rainParticle.transform.GetChild(0).GetComponent<ParticleSystem>();
+            rainParticleSplashRenderer = rainParticleSplash.GetComponent<ParticleSystemRenderer>();
+
+            snowParticle = GameManager.Instance.WeatherManager.PlayerWeather.SnowParticles.GetComponent<ParticleSystem>();
+            snowParticleRenderer = snowParticle.GetComponent<ParticleSystemRenderer>();
+            snowDefaultMaterial = snowParticleRenderer.sharedMaterial;
+            snowParticleSplash = snowParticle.transform.GetChild(0).GetComponent<ParticleSystem>();
+            snowParticleSplashRenderer = snowParticleSplash.GetComponent<ParticleSystemRenderer>();
+
+            rainPixelMaterial = new Material(shaderParticleEmissive);
+            snowPixelMaterial = new Material(shaderParticleEmissive);
+        }
+
+        ParticleSystem.MainModule rainParticleMain = rainParticle.main;
+        ParticleSystem.MainModule rainParticleSplashMain = rainParticleSplash.main;
+        ParticleSystem.ColorOverLifetimeModule rainParticleColorOverLifetime = rainParticle.colorOverLifetime;
+        ParticleSystem.MainModule snowParticleMain = snowParticle.main;
+        ParticleSystem.MainModule snowParticleSplashMain = snowParticleSplash.main;
+        ParticleSystem.ColorOverLifetimeModule snowParticleColorOverLifetime = snowParticle.colorOverLifetime;
+        ParticleSystem.RotationOverLifetimeModule snowParticleRotationOverLifetime = snowParticle.rotationOverLifetime;
+        ParticleSystem.RotationOverLifetimeModule snowParticleSplashRotationOverLifetime = snowParticleSplash.rotationOverLifetime;
+
+        if (weather)
+        {
+            rainParticleSplash.gameObject.SetActive(weatherSplashRain);
+            snowParticleSplash.gameObject.SetActive(weatherSplashSnow);
+
+            if (weatherPixel)
+            {
+                if (weatherShader)
+                {
+                    rainPixelMaterial.shader = shaderParticleLit;
+                    snowPixelMaterial.shader = shaderParticleLit;
+                    Color x = new Color(weatherEmissionRain, weatherEmissionRain, weatherEmissionRain, 1);
+                    Color y = new Color(weatherEmissionSnow, weatherEmissionSnow, weatherEmissionSnow, 1);
+                    rainPixelMaterial.SetColor("_Emission", x);
+                    snowPixelMaterial.SetColor("_Emission", y);
+                }
+                else
+                {
+                    rainPixelMaterial.shader = rainDefaultMaterial.shader;
+                    snowPixelMaterial.shader = rainDefaultMaterial.shader;
+                }
+
+                rainPixelMaterial.SetTexture("_MainTex",null);
+                snowPixelMaterial.SetTexture("_MainTex",null);
+
+                Color a = new Color(1, 1, 1, 0.627f);
+                Color b = new Color(1, 1, 1, 0.549f);
+
+                rainParticleMain.startSize = new ParticleSystem.MinMaxCurve(0.16f, 1f);
+                rainParticleMain.startColor = new ParticleSystem.MinMaxGradient(a, b);
+
+                snowParticleMain.startSize = new ParticleSystem.MinMaxCurve(0.1f, 0.2f);
+                snowParticleMain.startRotation = new ParticleSystem.MinMaxCurve(0);
+                snowParticleSplashMain.startSize = new ParticleSystem.MinMaxCurve(0.075f);
+                snowParticleMain.startColor = new ParticleSystem.MinMaxGradient(Color.white);
+                snowParticleColorOverLifetime.enabled = false;
+                snowParticleRotationOverLifetime.enabled = false;
+                snowParticleSplashRotationOverLifetime.enabled = false;
+            }
+            else
+            {
+
+                Texture defaultParticleTexture = snowDefaultMaterial.GetTexture("_MainTex");
+
+                snowPixelMaterial.SetTexture("_MainTex", defaultParticleTexture);
+                rainPixelMaterial.SetTexture("_MainTex", defaultParticleTexture);
+
+                if (weatherShader)
+                {
+                    rainPixelMaterial.shader = shaderParticleLit;
+                    snowPixelMaterial.shader = shaderParticleLit;
+                    Color x = new Color(weatherEmissionRain, weatherEmissionRain, weatherEmissionRain, 1);
+                    Color y = new Color(weatherEmissionSnow, weatherEmissionSnow, weatherEmissionSnow, 1);
+                    rainPixelMaterial.SetColor("_Emission", x);
+                    snowPixelMaterial.SetColor("_Emission", y);
+                }
+                else
+                {
+                    rainPixelMaterial.shader = rainDefaultMaterial.shader;
+                    snowPixelMaterial.shader = rainDefaultMaterial.shader;
+                }
+
+                Color a = new Color(1, 1, 1, 0.627f);
+                Color b = new Color(1, 1, 1, 0.549f);
+
+                rainParticleMain.startSize = new ParticleSystem.MinMaxCurve(0.32f, 2f);
+                rainParticleMain.startColor = new ParticleSystem.MinMaxGradient(a, b);
+
+                snowParticleMain.startSize = new ParticleSystem.MinMaxCurve(0.14f, 1.0f);
+                snowParticleMain.startRotation = new ParticleSystem.MinMaxCurve(0, 360);
+                snowParticleSplashMain.startSize = new ParticleSystem.MinMaxCurve(0.08f);
+                snowParticleMain.startColor = new ParticleSystem.MinMaxGradient(a, b);
+                snowParticleColorOverLifetime.enabled = true;
+                snowParticleRotationOverLifetime.enabled = true;
+                snowParticleSplashRotationOverLifetime.enabled = true;
+            }
+
+            rainParticleRenderer.material = rainPixelMaterial;
+            rainParticleSplashRenderer.material = rainPixelMaterial;
+            snowParticleRenderer.material = snowPixelMaterial;
+            snowParticleSplashRenderer.material = snowPixelMaterial;
+
+            if (weatherShader)
+                rainParticleRenderer.material.SetTexture("_MainTex", null);
+            else
+                rainParticleRenderer.material.SetTexture("_MainTex", rainDefaultMaterial.GetTexture("_MainTex"));
+        }
+        else
+        {
+            rainParticleSplash.gameObject.SetActive(true);
+            snowParticleSplash.gameObject.SetActive(true);
+
+            Color a = new Color(1, 1, 1, 0.627f);
+            Color b = new Color(1, 1, 1, 0.549f);
+
+            rainParticleMain.startSize = new ParticleSystem.MinMaxCurve(0.16f, 1f);
+            rainParticleMain.startColor = new ParticleSystem.MinMaxGradient(a, b);
+
+            snowParticleMain.startSize = new ParticleSystem.MinMaxCurve(0.14f, 1.0f);
+            snowParticleMain.startRotation = new ParticleSystem.MinMaxCurve(0, 360);
+            snowParticleSplashMain.startSize = new ParticleSystem.MinMaxCurve(0.08f);
+            snowParticleMain.startColor = new ParticleSystem.MinMaxGradient(a, b);
+            snowParticleColorOverLifetime.enabled = true;
+            snowParticleRotationOverLifetime.enabled = true;
+            snowParticleSplashRotationOverLifetime.enabled = true;
+
+            rainParticleRenderer.material = rainDefaultMaterial;
+            rainParticleSplashRenderer.material = rainDefaultMaterial;
+            snowParticleRenderer.material = snowDefaultMaterial;
+            snowParticleSplashRenderer.material = snowDefaultMaterial;
+        }
     }
 
     void ToggleImprovedExteriorLighting(bool setting)
@@ -288,15 +608,20 @@ public class TailOfArgonia : MonoBehaviour
             CastleAmbientLightDefault = playerAmbientLight.CastleAmbientLight;
         }
 
-        if (setting && DynamicSkies == null)
+        if (setting)
         {
             playerAmbientLight.enabled = false;
-            GameManager.Instance.SunlightManager.IndirectLight.enabled = false;
+            //GameManager.Instance.SunlightManager.IndirectLight.enabled = false;
 
             if (sunLight != null)
             {
                 if (DaggerfallUnity.Settings.ExteriorLightShadows)
-                    sunLight.shadows = LightShadows.Hard;
+                {
+                    if (sunShadowsHard)
+                        sunLight.shadows = LightShadows.Hard;
+                    else
+                        sunLight.shadows = LightShadows.Soft;
+                }
                 else
                     sunLight.shadows = LightShadows.None;
             }
@@ -314,7 +639,7 @@ public class TailOfArgonia : MonoBehaviour
         else
         {
             playerAmbientLight.enabled = true;
-            GameManager.Instance.SunlightManager.IndirectLight.enabled = true;
+            //GameManager.Instance.SunlightManager.IndirectLight.enabled = true;
 
             if (sunLight != null)
             {
@@ -372,12 +697,27 @@ public class TailOfArgonia : MonoBehaviour
             shearingEye.gameObject.tag = "MainCamera";
             mainCamera.gameObject.tag = "Untagged";
 
-            mainCamera.depth = -5;
+            //put the mainCamera behind the sky camera
+            mainCamera.depth = -4;
             sky.SkyCamera.depth = -3;
 
             //set variables
             shearingEye.CopyFrom(mainCamera);
             shearingEye.depth = 0;
+
+            //update anti-aliasing mode?
+            //shearingPostprocessingLayer = CopyComponent<PostProcessLayer>(mainPostprocessingLayer, shearingEye.gameObject);
+            shearingPostprocessingLayer.antialiasingMode = mainPostprocessingLayer.antialiasingMode;
+            shearingPostprocessingLayer.fastApproximateAntialiasing = mainPostprocessingLayer.fastApproximateAntialiasing;
+            shearingPostprocessingLayer.subpixelMorphologicalAntialiasing = mainPostprocessingLayer.subpixelMorphologicalAntialiasing;
+            shearingPostprocessingLayer.temporalAntialiasing = mainPostprocessingLayer.temporalAntialiasing;
+
+            if (DynamicSkies != null)
+            {
+                shearingEye.clearFlags = CameraClearFlags.Skybox;
+            }
+
+            //DaggerfallSkyMainCamera.SetValue(sky, shearingEye);
 
             DaggerfallUI.Instance.DaggerfallHUD.ShowCrosshair = false;
         }
@@ -386,8 +726,11 @@ public class TailOfArgonia : MonoBehaviour
             mainCamera.gameObject.tag = "MainCamera";
             shearingEye.gameObject.tag = "Untagged";
 
+            //main camera depth is 3 in case Distant Terrain is installed
             mainCamera.depth = 0;
             sky.SkyCamera.depth = -3;
+
+            //DaggerfallSkyMainCamera.SetValue(sky, mainCamera);
 
             DaggerfallUI.Instance.DaggerfallHUD.ShowCrosshair = DaggerfallUnity.Settings.Crosshair;
         }
@@ -400,12 +743,13 @@ public class TailOfArgonia : MonoBehaviour
         shearingEye.rect = mainCamera.rect;
         shearingEye.nearClipPlane = mainCamera.nearClipPlane;
         shearingEye.farClipPlane = mainCamera.farClipPlane;
+        //shearingEye.fieldOfView = mainCamera.fieldOfView;
 
         //copy world position
         shearingEye.transform.position = mainCamera.transform.position;
 
         //get Y world rotation
-        shearingEye.transform.eulerAngles = new Vector3(0,mainCamera.transform.eulerAngles.y,0);
+        shearingEye.transform.eulerAngles = new Vector3(0,mainCamera.transform.eulerAngles.y, mainCamera.transform.eulerAngles.z);
 
         //derive pitch angle
         float angle = Vector3.SignedAngle(shearingEye.transform.forward, mainCamera.transform.forward, shearingEye.transform.right);
@@ -422,9 +766,10 @@ public class TailOfArgonia : MonoBehaviour
             Camera mainCamera = GameManager.Instance.MainCamera;
             Vector3 crosshairPoint = mainCamera.transform.position + mainCamera.transform.forward * 5;
             crosshairOffset = shearingEye.WorldToViewportPoint(crosshairPoint);
+            crosshairOffset.y -= 0.5f;
         }
         else
-            crosshairOffset = new Vector3(0.5f,0.5f,0);
+            crosshairOffset = new Vector3(0,0,0);
     }
 
     private void OnGUI()
@@ -446,16 +791,27 @@ public class TailOfArgonia : MonoBehaviour
             float screenScaleX = (float)screenRect.width / nativeScreenWidth;
 
             //Vector2 crosshairTextureScale = new Vector2(CrosshairTexture.width * screenScaleX, CrosshairTexture.height * screenScaleY);
-            Vector2 crosshairTextureScale = new Vector2(CrosshairTexture.width, CrosshairTexture.height) * crosshairSize;
+            //Vector2 crosshairTextureScale = new Vector2(CrosshairTexture.width, CrosshairTexture.height) * crosshairSize;
+            Vector2 crosshairTextureScale = crosshairSize * DaggerfallUI.Instance.DaggerfallHUD.CrosshairScale;
+
+            float HUDHeight = 0;
+            float LargeHUDMult = 1;
+            if (DaggerfallUI.Instance.DaggerfallHUD != null &&
+                DaggerfallUnity.Settings.LargeHUD &&
+                (DaggerfallUnity.Settings.LargeHUDUndockedOffsetWeapon || DaggerfallUnity.Settings.LargeHUDDocked))
+            {
+                HUDHeight = DaggerfallUI.Instance.DaggerfallHUD.LargeHUD.ScreenHeight;
+                LargeHUDMult = DaggerfallUI.Instance.DaggerfallHUD.LargeHUD.ScreenHeight / screenRect.height;
+            }
 
             Rect crosshairRect = new Rect(
                 screenRect.x + (screenRect.width * 0.5f) - (crosshairTextureScale.x * 0.5f),
-                screenRect.y + (screenRect.height * (1-crosshairOffset.y)) - (crosshairTextureScale.y * 0.5f),
+                screenRect.y + (screenRect.height * 0.5f) - (HUDHeight * 0.5f) - (crosshairTextureScale.y * 0.5f) - (screenRect.height * crosshairOffset.y),
                 crosshairTextureScale.x,
                 crosshairTextureScale.y
                 );
 
-            if (!isShearing && !DaggerfallUnity.Settings.Crosshair)
+            if (!shearingCrosshairAlwaysVisible && !DaggerfallUnity.Settings.Crosshair)
                 return;
 
             DaggerfallUI.DrawTexture(crosshairRect, CrosshairTexture, ScaleMode.StretchToFill, false, Color.white);
@@ -530,18 +886,18 @@ public class TailOfArgonia : MonoBehaviour
             }
         }
 
-        if (ambientLighting && sunLight != null && DynamicSkies == null)
+        if (ambientLighting && sunLight != null)
         {
             if (GameManager.Instance.IsPlayingGame())
             {
                 Color skyColor = Color.white;
 
-                if (lightColor == 1)
+                if (lightColor == 1 || DynamicSkies != null)
                     skyColor = RenderSettings.fogColor;
                 else
-                    skyColor = sky.skyColors.west[Mathf.RoundToInt(sky.skyColors.west.Length/2)];
+                    skyColor = sky.skyColors.west[Mathf.RoundToInt(sky.skyColors.west.Length / 2)];
 
-                lastCameraClearColor = Scale(skyColor, 0.5f * lightColorScale, 2 * sunLightScale);
+                lastCameraClearColor = Scale(skyColor, 0.5f * LightColorScale, 2 * sunLightScale);
                 if (sunLight.color != lastCameraClearColor)
                     sunLight.color = lastCameraClearColor;
 
@@ -555,22 +911,82 @@ public class TailOfArgonia : MonoBehaviour
                         if (worldTime.Now.IsNight)
                         {
                             //always use sky color at night
-                            //skyColor = sky.skyColors.west[sky.skyColors.west.Length - 1];
-                            skyColor = sky.skyColors.west[Mathf.RoundToInt(sky.skyColors.west.Length / 2)];
-                            lastAmbientColor *= Scale(skyColor, 0.5f * lightColorScale, 10f * moonLightScale);
+                            if (DynamicSkies == null)
+                                skyColor = sky.skyColors.west[Mathf.RoundToInt(sky.skyColors.west.Length / 2)];
+                            else
+                                skyColor = Color.blue * 0.25f;
+
+                            //check for moon phase
+                            if (moonPhaseMassar == LunarPhases.None || moonPhaseSecunda == LunarPhases.None)
+                                UpdateMoonPhases();
+
+                            lastAmbientColor *= Scale(skyColor, 0.5f * LightColorScale, 10f * MoonLightScale);
                         }
                         else
-                            lastAmbientColor *= Scale(skyColor, 0.5f * lightColorScale, 0.5f);
+                        {
+                            moonPhaseMassar = LunarPhases.None;
+                            moonPhaseSecunda = LunarPhases.None;
+
+                            lastAmbientColor *= Scale(skyColor, 0.5f * LightColorScale, 0.5f);
+                        }
+                    }
+                    else
+                    {
+                        /*if (playerEnterExit.IsPlayerInsideDungeon || worldTime.Now.IsNight)
+                            skyColor = Color.blue * 0.25f;
+                        else
+                            skyColor = Color.blue * 0.25f;*/
+                        if (playerEnterExit.IsPlayerInsideDungeon || playerEnterExit.IsPlayerInsideDungeonCastle)
+                            skyColor = GetDungeonFogColor() * 0.25f;
+                        else
+                            skyColor = GetBuildingFogColor() * 0.25f;
+                        lastAmbientColor *= Scale(skyColor, 0.5f * LightColorScale, 5f);
                     }
 
                     if (RenderSettings.ambientLight != lastAmbientColor)
                     {
                         RenderSettings.ambientLight = Vector4.MoveTowards(RenderSettings.ambientLight, lastAmbientColor, 1f * Time.deltaTime);
+                        //GameManager.Instance.SunlightManager.IndirectLight.color = RenderSettings.ambientLight;
                     }
                 }
             }
         }
     }
+
+    public void ResetMoonPhases()
+    {
+        moonPhaseMassar = LunarPhases.None;
+        moonPhaseSecunda = LunarPhases.None;
+    }
+
+    public void UpdateMoonPhases()
+    {
+        moonPhaseMassar = DaggerfallUnity.Instance.WorldTime.Now.MassarLunarPhase;
+        moonPhaseSecunda = DaggerfallUnity.Instance.WorldTime.Now.SecundaLunarPhase;
+
+        float scaleMassar = 1;
+        if (moonPhaseMassar == LunarPhases.New)
+            scaleMassar = 0.2f;
+        else if (moonPhaseMassar == LunarPhases.OneWax || moonPhaseMassar == LunarPhases.OneWane)
+            scaleMassar = 0.4f;
+        else if (moonPhaseMassar == LunarPhases.ThreeWax || moonPhaseMassar == LunarPhases.ThreeWane)
+            scaleMassar = 0.6f;
+        else if (moonPhaseMassar == LunarPhases.HalfWax || moonPhaseMassar == LunarPhases.HalfWane)
+            scaleMassar = 0.8f;
+
+        float scaleSecunda = 1;
+        if (moonPhaseSecunda == LunarPhases.New)
+            scaleSecunda = 0.2f;
+        else if (moonPhaseSecunda == LunarPhases.OneWax || moonPhaseSecunda == LunarPhases.OneWane)
+            scaleSecunda = 0.4f;
+        else if (moonPhaseSecunda == LunarPhases.ThreeWax || moonPhaseSecunda == LunarPhases.ThreeWane)
+            scaleSecunda = 0.6f;
+        else if (moonPhaseSecunda == LunarPhases.HalfWax || moonPhaseSecunda == LunarPhases.HalfWane)
+            scaleSecunda = 0.8f;
+
+        moonPhaseScale = (scaleMassar + scaleSecunda)/2;
+    }
+
     public void UpdateAmbientLight()
     {
         if (!playerEnterExit)
@@ -617,7 +1033,8 @@ public class TailOfArgonia : MonoBehaviour
         float scale = GameManager.Instance.SunlightManager.DaylightScale * GameManager.Instance.SunlightManager.ScaleFactor;
 
         float weather = 1;
-        // Apply rain, storm, snow light scale
+
+        /*// Apply rain, storm, snow light scale
         if (weatherManager.IsRaining && !weatherManager.IsStorming)
         {
             weather = RainSunlightScaleDefault;
@@ -633,7 +1050,7 @@ public class TailOfArgonia : MonoBehaviour
         else if (weatherManager.IsOvercast)
         {
             weather = OvercastSunlightScaleDefault;
-        }
+        }*/
 
         Color startColor = playerAmbientLight.ExteriorNightAmbientLight * weather;
 
@@ -661,9 +1078,86 @@ public class TailOfArgonia : MonoBehaviour
         weatherManager.RainyFogSettings = RainyFogSettingsDefault;
         weatherManager.SnowyFogSettings = SnowyFogSettingsDefault;
         weatherManager.HeavyFogSettings = HeavyFogSettingsDefault;
+        weatherManager.InteriorFogSettings = InteriorFogSettingsDefault;
+        weatherManager.DungeonFogSettings = DungeonFogSettingsDefault;
 
         //Reset the current weather for the fog settings to take effect
         weatherManager.SetWeather(weatherManager.PlayerWeather.WeatherType);
+    }
+
+    Color GetDungeonFogColor()
+    {
+        DFRegion.DungeonTypes dungeonType = playerEnterExit.Dungeon.Summary.DungeonType;
+
+        Color fogColor = Color.black;
+
+        switch (dungeonType)
+        {
+            case DFRegion.DungeonTypes.VolcanicCaves:
+            case DFRegion.DungeonTypes.DragonsDen:
+            case DFRegion.DungeonTypes.Coven:
+            case DFRegion.DungeonTypes.DesecratedTemple:
+            case DFRegion.DungeonTypes.ScorpionNest:
+                fogColor = Color.red;
+                break;
+            case DFRegion.DungeonTypes.SpiderNest:
+            case DFRegion.DungeonTypes.Laboratory:
+            case DFRegion.DungeonTypes.Prison:
+                fogColor = Color.green;
+                break;
+            case DFRegion.DungeonTypes.BarbarianStronghold:
+            case DFRegion.DungeonTypes.GiantStronghold:
+            case DFRegion.DungeonTypes.HumanStronghold:
+            case DFRegion.DungeonTypes.OrcStronghold:
+                fogColor = new Color(1,0.5f,0); //orange
+                break;
+            case DFRegion.DungeonTypes.Cemetery:
+            case DFRegion.DungeonTypes.Crypt:
+            case DFRegion.DungeonTypes.VampireHaunt:
+            case DFRegion.DungeonTypes.RuinedCastle:
+                fogColor = Color.blue;
+                break;
+            case DFRegion.DungeonTypes.Mine:
+            case DFRegion.DungeonTypes.NaturalCave:
+            case DFRegion.DungeonTypes.HarpyNest:
+                fogColor = Color.white;
+                break;
+        }
+
+        return Scale(fogColor, fogDungeonColorScale, 1f);
+    }
+
+    Color GetBuildingFogColor()
+    {
+        DFLocation.BuildingTypes buildingType = playerEnterExit.BuildingType;
+
+        Color fogColor = Color.white;
+
+        if (worldTime.Now.IsNight)
+            fogColor = Color.blue;
+        else
+        {
+            /*switch (buildingType)
+            {
+                case DFLocation.BuildingTypes.WeaponSmith:
+                    fogColor = Color.red;
+                    break;
+                case DFLocation.BuildingTypes.Alchemist:
+                    fogColor = Color.green;
+                    break;
+                case DFLocation.BuildingTypes.Tavern:
+                    fogColor = new Color(1, 0.5f, 0); //orange
+                    break;
+                case DFLocation.BuildingTypes.Temple:
+                    fogColor = Color.blue;
+                    break;
+                case DFLocation.BuildingTypes.GeneralStore:
+                    fogColor = Color.white;
+                    break;
+            }*/
+        }
+
+        return Scale(fogColor, fogInteriorColorScale, 1f);
     }
 
     void ApplyFog(FogMode fogMode)
@@ -679,6 +1173,8 @@ public class TailOfArgonia : MonoBehaviour
             RainyFogSettings.fogMode = currentFogMode;
             SnowyFogSettings.fogMode = currentFogMode;
             HeavyFogSettings.fogMode = currentFogMode;
+            InteriorFogSettings.fogMode = currentFogMode;
+            DungeonFogSettings.fogMode = currentFogMode;
         }
 
         float distance = GameManager.Instance.MainCamera.farClipPlane;
@@ -704,6 +1200,12 @@ public class TailOfArgonia : MonoBehaviour
 
             HeavyFogSettings.startDistance = fogStartDistance - (32 * multiplier);
             HeavyFogSettings.endDistance = fogEndDistance - (32 * multiplier);
+
+            InteriorFogSettings.startDistance = fogStartDistance - (4 * multiplier);
+            InteriorFogSettings.endDistance = fogEndDistance - (4 * multiplier);
+
+            DungeonFogSettings.startDistance = fogStartDistance - (8 * multiplier);
+            DungeonFogSettings.endDistance = fogEndDistance - (8 * multiplier);
         }
 
         if (fogMode == FogMode.Exponential || fogMode == FogMode.ExponentialSquared)
@@ -711,13 +1213,36 @@ public class TailOfArgonia : MonoBehaviour
             //default fog density is 0.0005, too thin for my taste
             float density = 0.001f * fogDensityModifier;
             if (view)
-                density = fogDensities[viewDistance] * fogDensityModifier;
-
-            SunnyFogSettings.density = density * 1;
-            OvercastFogSettings.density = density * 2f;
-            RainyFogSettings.density = density * 3;
-            SnowyFogSettings.density = density * 3;
-            HeavyFogSettings.density = density * 4;
+            {
+                if (terrainDistanceOverride == 0)
+                {
+                    SunnyFogSettings.density = fogDensities[viewDistance] * fogDensityModifier * 1;
+                    OvercastFogSettings.density = fogDensities[viewDistance] * fogDensityModifier * 2f;
+                    RainyFogSettings.density = fogDensities[viewDistance] * fogDensityModifier * 3;
+                    SnowyFogSettings.density = fogDensities[viewDistance] * fogDensityModifier * 3;
+                    HeavyFogSettings.density = fogDensities[viewDistance] * fogDensityModifier * 4;
+                }
+                else
+                {
+                    SunnyFogSettings.density = fogDensities[7] * fogDensityModifier * 1;
+                    OvercastFogSettings.density = fogDensities[7] * fogDensityModifier * 2f;
+                    RainyFogSettings.density = fogDensities[7] * fogDensityModifier * 3;
+                    SnowyFogSettings.density = fogDensities[7] * fogDensityModifier * 3;
+                    HeavyFogSettings.density = fogDensities[7] * fogDensityModifier * 4;
+                }
+                InteriorFogSettings.density = fogDensities[viewDistanceInterior] * fogDensityModifier * 1;
+                DungeonFogSettings.density = fogDensities[viewDistanceDungeon] * fogDensityModifier * 2;
+            }
+            else
+            {
+                SunnyFogSettings.density = density * 1;
+                OvercastFogSettings.density = density * 2f;
+                RainyFogSettings.density = density * 3;
+                SnowyFogSettings.density = density * 3;
+                HeavyFogSettings.density = density * 4;
+                InteriorFogSettings.density = density * 2;
+                DungeonFogSettings.density = density * 4;
+            }
         }
 
         weatherManager.SunnyFogSettings = SunnyFogSettings;
@@ -725,9 +1250,31 @@ public class TailOfArgonia : MonoBehaviour
         weatherManager.RainyFogSettings = RainyFogSettings;
         weatherManager.SnowyFogSettings = SnowyFogSettings;
         weatherManager.HeavyFogSettings = HeavyFogSettings;
+        weatherManager.DungeonFogSettings = DungeonFogSettings;
+        weatherManager.InteriorFogSettings = InteriorFogSettings;
 
         //Reset the current weather for the fog settings to take effect
         weatherManager.SetWeather(weatherManager.PlayerWeather.WeatherType);
+
+        // then check if player is inside and set fog accordingly
+        if (playerEnterExit.IsPlayerInsideBuilding)
+        {
+            weatherManager.SetFog(InteriorFogSettings, true);
+            if (fogInteriorColored)
+                GameManager.Instance.MainCamera.backgroundColor = GetBuildingFogColor() * fogInteriorBrightness;
+            else
+                GameManager.Instance.MainCamera.backgroundColor = Color.black;
+            RenderSettings.fogColor = GameManager.Instance.MainCamera.backgroundColor;
+        }
+        else if (playerEnterExit.IsPlayerInsideDungeon || playerEnterExit.IsPlayerInsideDungeonCastle)
+        {
+            weatherManager.SetFog(DungeonFogSettings, true);
+            if (fogDungeonColored)
+                GameManager.Instance.MainCamera.backgroundColor = GetDungeonFogColor() * fogDungeonBrightness;
+            else
+                GameManager.Instance.MainCamera.backgroundColor = Color.black;
+            RenderSettings.fogColor = GameManager.Instance.MainCamera.backgroundColor;
+        }
     }
 
     void ApplyViewDistance()
@@ -736,18 +1283,43 @@ public class TailOfArgonia : MonoBehaviour
             return;
 
         bool updateWorld = false;
-        if (GameManager.Instance.StreamingWorld.TerrainDistance != terrainDistances[viewDistance])
-            updateWorld = true;
 
-        GameManager.Instance.StreamingWorld.TerrainDistance = terrainDistances[viewDistance];
-
-        if (GameManager.Instance.PlayerEnterExit.IsPlayerInside)
+        if (terrainDistanceOverride == 0)
         {
-            GameManager.Instance.MainCamera.farClipPlane = 2600;
+            //Terrain Distance is handled automatically
+            if (GameManager.Instance.StreamingWorld.TerrainDistance != terrainDistances[viewDistance])
+                updateWorld = true;
+
+            GameManager.Instance.StreamingWorld.TerrainDistance = terrainDistances[viewDistance];
         }
         else
         {
-            GameManager.Instance.MainCamera.farClipPlane = viewDistances[viewDistance];
+            int terrainDistance = 4 + terrainDistanceOverride;
+            if (GameManager.Instance.StreamingWorld.TerrainDistance != terrainDistance)
+                updateWorld = true;
+
+            GameManager.Instance.StreamingWorld.TerrainDistance = terrainDistance;
+        }
+
+        if (GameManager.Instance.PlayerEnterExit.IsPlayerInside)
+        {
+            if (GameManager.Instance.PlayerEnterExit.IsPlayerInsideDungeon || GameManager.Instance.PlayerEnterExit.IsPlayerInsideDungeonCastle)
+                GameManager.Instance.MainCamera.farClipPlane = viewDistances[viewDistanceDungeon];
+            else
+                GameManager.Instance.MainCamera.farClipPlane = viewDistances[viewDistanceInterior];
+        }
+        else
+        {
+            if (terrainDistanceOverride == 0)
+            {
+                //use view distance slider if terrain distance override is disabled
+                GameManager.Instance.MainCamera.farClipPlane = viewDistances[viewDistance];
+            }
+            else
+            {
+                float viewDistanceOverride = (4f + terrainDistanceOverride) * 819.2f;
+                GameManager.Instance.MainCamera.farClipPlane = viewDistanceOverride;
+            }
             if (updateWorld)
                 ForceUpdateWorld();
         }
@@ -786,17 +1358,76 @@ public class TailOfArgonia : MonoBehaviour
         if (!view)
             return;
 
-        GameManager.Instance.MainCamera.farClipPlane = viewDistances[viewDistance];
+        if (playerEnterExit.IsPlayerInside)
+        {
+            if (playerEnterExit.IsPlayerInsideDungeon || playerEnterExit.IsPlayerInsideDungeonCastle)
+                GameManager.Instance.MainCamera.farClipPlane = viewDistances[viewDistanceDungeon];
+            else
+                GameManager.Instance.MainCamera.farClipPlane = viewDistances[viewDistanceInterior];
+        }
+        else
+        {
+
+            if (terrainDistanceOverride == 0)
+            {
+                //use view distance slider if terrain distance override is disabled
+                GameManager.Instance.MainCamera.farClipPlane = viewDistances[viewDistance];
+            }
+            else
+            {
+                float viewDistanceOverride = (4f + terrainDistanceOverride) * 819.2f;
+                GameManager.Instance.MainCamera.farClipPlane = viewDistanceOverride;
+            }
+        }
+    }
+
+    public void ApplyFog()
+    {
+        if (!fog)
+            return;
+
+        if (playerEnterExit.IsPlayerInside)
+        {
+            GameManager.Instance.MainCamera.clearFlags = CameraClearFlags.SolidColor;
+            if (playerEnterExit.IsPlayerInsideDungeon || playerEnterExit.IsPlayerInsideDungeonCastle)
+            {
+                if (fogDungeonColored)
+                    GameManager.Instance.MainCamera.backgroundColor = GetDungeonFogColor() * fogDungeonBrightness;
+                else
+                    GameManager.Instance.MainCamera.backgroundColor = Color.black;
+                RenderSettings.fogColor = GameManager.Instance.MainCamera.backgroundColor;
+            }
+            else
+            {
+                if (fogInteriorColored)
+                    GameManager.Instance.MainCamera.backgroundColor = GetBuildingFogColor() * fogInteriorBrightness;
+                else
+                    GameManager.Instance.MainCamera.backgroundColor = Color.black;
+                RenderSettings.fogColor = GameManager.Instance.MainCamera.backgroundColor;
+            }
+        }
+        else
+            GameManager.Instance.MainCamera.clearFlags = CameraClearFlags.Depth;
     }
 
     public static void ApplyViewDistance_OnTransitionInterior(PlayerEnterExit.TransitionEventArgs args)
     {
-        Instance.SetDefaultViewDistance();
+        Instance.SetCustomViewDistance();
+        Instance.ApplyFog();
+        Instance.ResetMoonPhases();
     }
 
     public static void ApplyViewDistance_OnTransitionExterior(PlayerEnterExit.TransitionEventArgs args)
     {
         Instance.SetCustomViewDistance();
+        Instance.ApplyFog();
+    }
+
+    public static void ApplyViewDistance_OnLoad(SaveData_v1 saveData)
+    {
+        Instance.SetCustomViewDistance();
+        Instance.ApplyFog();
+        Instance.ResetMoonPhases();
     }
 
     public static void ApplyFadeShader_OnUpdateTerrainsEnd()
@@ -811,12 +1442,13 @@ public class TailOfArgonia : MonoBehaviour
 
     public static void ApplyFadeShader_OnLoad(SaveData_v1 saveData)
     {
-        Instance.ApplyFadeShaderDelayed();
+        Instance.ApplyFadeShaderDelayed(1);
     }
 
     public static void ApplyFadeShader_OnPostFastTravel()
     {
         Instance.ApplyFadeShaderDelayed();
+        Instance.ResetMoonPhases();
     }
 
     public static void ApplyFadeShader_OnCityLights()
@@ -824,14 +1456,72 @@ public class TailOfArgonia : MonoBehaviour
         Instance.ApplyFadeShaderDelayed();
     }
 
-    public void ApplyFadeShaderDelayed()
+    public void ApplyFadeShaderDelayed(float delay = 0.1f)
     {
-        StartCoroutine(ApplyFadeShaderCoroutine());
+        StartCoroutine(ApplyFadeShaderCoroutine(delay));
     }
 
-    IEnumerator ApplyFadeShaderCoroutine()
+    public static void ApplyFadeShader_OnEnemySpawn(GameObject enemy)
+    {
+        Instance.ApplyFadeShaderToEntityDelayed(enemy);
+    }
+
+    public static void ApplyFadeShader_OnMobileNPCCreate(PopulationManager.PoolItem poolItem)
+    {
+        Instance.ApplyFadeShaderToEntityDelayed(poolItem.npc.gameObject);
+    }
+
+    public void ApplyFadeShaderToEntityDelayed(GameObject entity)
+    {
+        StartCoroutine(ApplyFadeShaderToEntityCoroutine(entity));
+    }
+
+    IEnumerator ApplyFadeShaderToEntityCoroutine(GameObject entity)
     {
         yield return new WaitForSeconds(0.1f);
+
+        ApplyFadeShaderToEntity(entity);
+    }
+
+    void ApplyFadeShaderToEntity(GameObject entity)
+    {
+        MeshRenderer renderer = entity.GetComponentInChildren<MeshRenderer>(true);
+
+        if (renderer == null)
+            return;
+
+        Material[] materials = renderer.materials;
+        for (int i = 0; i < renderer.materials.Length; i++)
+        {
+            Material material = renderer.materials[i];
+            if (material.shader.name == "Daggerfall/Billboard" || material.shader == shaderBillboard)
+            {
+                Color color = material.GetColor("_Color");
+                float scaleCutoff = material.GetFloat("_Cutoff");
+                Texture texMain = material.GetTexture("_MainTex");
+                Texture texBump = material.GetTexture("_BumpMap");
+                Texture texEmission = material.GetTexture("_EmissionMap");
+                Color colorEmission = material.GetColor("_EmissionColor");
+
+                Material newMat = new Material(Shader.Find("Daggerfall/Billboard"));
+                newMat.name = material.name;
+                newMat.SetColor("_Color", color);
+                newMat.SetFloat("_Cutoff", scaleCutoff);
+                newMat.SetTexture("_MainTex", texMain);
+                newMat.SetTexture("_BumpMap", texBump);
+                newMat.SetTexture("_EmissionMap", texEmission);
+                newMat.SetColor("_EmissionColor", colorEmission);
+                if (material.IsKeywordEnabled(KeyWords.Emission))
+                    newMat.EnableKeyword(KeyWords.Emission);
+
+                materials[i] = newMat;
+            }
+        }
+    }
+
+    IEnumerator ApplyFadeShaderCoroutine(float delay = 0.1f)
+    {
+        yield return new WaitForSeconds(delay);
 
         ApplyFadeShader();
     }
@@ -849,10 +1539,20 @@ public class TailOfArgonia : MonoBehaviour
             DaggerfallUI.Instance.PopupMessage("Removing fade shader!");
         }
 
-        MeshRenderer[] renderers = FindObjectsOfType<MeshRenderer>();
+        MeshRenderer[] meshrenderers = FindObjectsOfType<MeshRenderer>();
+        SkinnedMeshRenderer[] skinnedmeshrenderers = FindObjectsOfType<SkinnedMeshRenderer>();
+        Renderer[] renderers = new Renderer[meshrenderers.Length + skinnedmeshrenderers.Length];
+        for (int i = 0; i < meshrenderers.Length; i++)
+        {
+            renderers[i] = meshrenderers[i];
+        }
+        for (int i = 0; i < skinnedmeshrenderers.Length; i++)
+        {
+            renderers[i + meshrenderers.Length] = skinnedmeshrenderers[i];
+        }
 
         //Debug.Log("TAIL OF ARGONIA - INITIALIZING OBJECT SMOOTH CLIPPING");
-        foreach (MeshRenderer renderer in renderers)
+        foreach (Renderer renderer in renderers)
         {
             Material[] materials = renderer.materials;
             for (int i = 0; i < renderer.materials.Length; i++)
@@ -873,6 +1573,7 @@ public class TailOfArgonia : MonoBehaviour
                     float scaleSmoothness = material.GetFloat("_Smoothness");
 
                     Material newMat = new Material(Shader.Find("Daggerfall/Default"));
+                    newMat.name = material.name;
                     newMat.SetColor("_Color", color);
                     newMat.SetColor("_SpecColor", colorSpec);
                     newMat.SetTexture("_MainTex", texMain);
@@ -891,11 +1592,11 @@ public class TailOfArgonia : MonoBehaviour
                 else if (material.shader == shaderBillboard)
                 {
                     Billboard billboard = renderer.GetComponent<Billboard>();
-                    if (billboard != null)
+                    /*if (billboard != null)
                     {
                         if (billboard.Summary.IsMobile)
                             continue;
-                    }
+                    }*/
                     //Debug.Log("TAIL OF ARGONIA - FOUND A BILLBOARD MATERIAL");
                     Color color = material.GetColor("_Color");
                     float scaleCutoff = material.GetFloat("_Cutoff");
@@ -905,6 +1606,7 @@ public class TailOfArgonia : MonoBehaviour
                     Color colorEmission = material.GetColor("_EmissionColor");
 
                     Material newMat = new Material(Shader.Find("Daggerfall/Billboard"));
+                    newMat.name = material.name;
                     newMat.SetColor("_Color", color);
                     newMat.SetFloat("_Cutoff", scaleCutoff);
                     newMat.SetTexture("_MainTex", texMain);
@@ -928,6 +1630,7 @@ public class TailOfArgonia : MonoBehaviour
                     Vector4 vectorUp = material.GetVector("_UpVector");
 
                     Material newMat = new Material(Shader.Find("Daggerfall/BillboardBatch"));
+                    newMat.name = material.name;
                     newMat.SetColor("_Color", color);
                     newMat.SetFloat("_Cutoff", scaleCutoff);
                     newMat.SetTexture("_MainTex", texMain);
@@ -952,6 +1655,7 @@ public class TailOfArgonia : MonoBehaviour
                     Vector4 vectorUp = material.GetVector("_UpVector");
 
                     Material newMat = new Material(Shader.Find("Daggerfall/BillboardBatchNoShadows"));
+                    newMat.name = material.name;
                     newMat.SetColor("_Color", color);
                     newMat.SetFloat("_Cutoff", scaleCutoff);
                     newMat.SetTexture("_MainTex", texMain);
@@ -972,7 +1676,8 @@ public class TailOfArgonia : MonoBehaviour
 
         foreach (Terrain terrain in terrains)
         {
-            if (SystemInfo.supports2DArrayTextures && DaggerfallUnity.Settings.EnableTextureArrays && terrain.materialTemplate.shader == shaderTilemapTextureArray)
+            //if (SystemInfo.supports2DArrayTextures && DaggerfallUnity.Settings.EnableTextureArrays && terrain.materialTemplate.shader == shaderTilemapTextureArray)
+            if (terrain.materialTemplate.shader == shaderTilemapTextureArray)
             {
                 Texture tileTextureArray = terrain.materialTemplate.GetTexture("_TileTexArr");
                 Texture tileNormalMapTextureArray = terrain.materialTemplate.GetTexture("_TileNormalMapTexArr");
@@ -981,6 +1686,7 @@ public class TailOfArgonia : MonoBehaviour
                 int tileMapDim = terrain.materialTemplate.GetInt("_TilemapDim");
 
                 Material newMat = new Material(Shader.Find("Daggerfall/TilemapTextureArray"));
+                newMat.name = terrain.materialTemplate.name;
                 newMat.SetTexture("_TileTexArr", tileTextureArray);
                 newMat.SetTexture("_TileNormalMapTexArr", tileNormalMapTextureArray);
                 if (terrain.materialTemplate.IsKeywordEnabled("_NORMALMAP"))
@@ -1000,14 +1706,12 @@ public class TailOfArgonia : MonoBehaviour
                 int tileMapDim = terrain.materialTemplate.GetInt("_TilemapDim");
 
                 Material newMat = new Material(Shader.Find("Daggerfall/Tilemap"));
+                newMat.name = terrain.materialTemplate.name;
                 newMat.SetTexture("_TileAtlasTex", tileSetTexture);
                 newMat.SetTexture("_TilemapTex", tileMapTexture);
                 newMat.SetInt("_TilemapDim", tileMapDim);
 
-                if (textureDitherSize == 1)
-                    newMat.SetTexture("_DitherPattern", textureDitherLarge);
-                else
-                    newMat.SetTexture("_DitherPattern", textureDitherSmall);
+                newMat.SetTexture("_DitherPattern", ditherSizeTextures[ditherSize]);
                 newMat.SetFloat("_DitherStart", smoothClipStartDistance);
 
                 terrain.materialTemplate = newMat;
@@ -1048,10 +1752,20 @@ public class TailOfArgonia : MonoBehaviour
             DaggerfallUI.Instance.PopupMessage("Applying fade shader!");
         }
 
-        MeshRenderer[] renderers = FindObjectsOfType<MeshRenderer>();
+        MeshRenderer[] meshrenderers = FindObjectsOfType<MeshRenderer>();
+        SkinnedMeshRenderer[] skinnedmeshrenderers = FindObjectsOfType<SkinnedMeshRenderer>();
+        Renderer[] renderers = new Renderer[meshrenderers.Length+skinnedmeshrenderers.Length];
+        for (int i = 0; i < meshrenderers.Length; i++)
+        {
+            renderers[i] = meshrenderers[i];
+        }
+        for (int i = 0; i < skinnedmeshrenderers.Length; i++)
+        {
+            renderers[i+meshrenderers.Length] = skinnedmeshrenderers[i];
+        }
 
         //Debug.Log("TAIL OF ARGONIA - INITIALIZING OBJECT SMOOTH CLIPPING");
-        foreach (MeshRenderer renderer in renderers)
+        foreach (Renderer renderer in renderers)
         {
             Material[] materials = renderer.materials;
             for (int i = 0; i < renderer.materials.Length; i++)
@@ -1072,6 +1786,7 @@ public class TailOfArgonia : MonoBehaviour
                     float scaleSmoothness = material.GetFloat("_Smoothness");
 
                     Material newMat = new Material(shaderDefault);
+                    newMat.name = material.name;
                     newMat.SetColor("_Color", color);
                     newMat.SetColor("_SpecColor", colorSpec);
                     newMat.SetTexture("_MainTex", texMain);
@@ -1085,22 +1800,21 @@ public class TailOfArgonia : MonoBehaviour
                     newMat.SetTexture("_MetallicGlossMap", texMetallic);
                     newMat.SetFloat("_Smoothness", scaleSmoothness);
 
-                    if (textureDitherSize == 1)
-                        newMat.SetTexture("_DitherPattern", textureDitherLarge);
-                    else
-                        newMat.SetTexture("_DitherPattern", textureDitherSmall);
+                    newMat.SetTexture("_DitherPattern", ditherSizeTextures[ditherSize]);
                     newMat.SetFloat("_DitherStart", smoothClipStartDistance);
+
+                    newMat.SetFloat("_Brightness", textureBrightness);
 
                     materials[i] = newMat;
                 }
                 else if (material.shader.name == "Daggerfall/Billboard" || material.shader == shaderBillboard)
                 {
                     Billboard billboard = renderer.GetComponent<Billboard>();
-                    if (billboard != null)
+                    /*if (billboard != null)
                     {
                         if (billboard.Summary.IsMobile)
                             continue;
-                    }
+                    }*/
                     //Debug.Log("TAIL OF ARGONIA - FOUND A BILLBOARD MATERIAL");
                     Color color = material.GetColor("_Color");
                     float scaleCutoff = material.GetFloat("_Cutoff");
@@ -1110,6 +1824,7 @@ public class TailOfArgonia : MonoBehaviour
                     Color colorEmission = material.GetColor("_EmissionColor");
 
                     Material newMat = new Material(shaderBillboard);
+                    newMat.name = material.name;
                     newMat.SetColor("_Color", color);
                     newMat.SetFloat("_Cutoff", scaleCutoff);
                     newMat.SetTexture("_MainTex", texMain);
@@ -1119,11 +1834,10 @@ public class TailOfArgonia : MonoBehaviour
                     if (material.IsKeywordEnabled(KeyWords.Emission))
                         newMat.EnableKeyword(KeyWords.Emission);
 
-                    if (textureDitherSize == 1)
-                        newMat.SetTexture("_DitherPattern", textureDitherLarge);
-                    else
-                        newMat.SetTexture("_DitherPattern", textureDitherSmall);
+                    newMat.SetTexture("_DitherPattern", ditherSizeTextures[ditherSize]);
                     newMat.SetFloat("_DitherStart", smoothClipStartDistance);
+
+                    newMat.SetFloat("_Brightness", textureBrightness);
 
                     materials[i] = newMat;
                 }
@@ -1139,6 +1853,7 @@ public class TailOfArgonia : MonoBehaviour
                     Vector4 vectorUp = material.GetVector("_UpVector");
 
                     Material newMat = new Material(shaderBillboardBatch);
+                    newMat.name = material.name;
                     newMat.SetColor("_Color", color);
                     newMat.SetFloat("_Cutoff", scaleCutoff);
                     newMat.SetTexture("_MainTex", texMain);
@@ -1149,11 +1864,10 @@ public class TailOfArgonia : MonoBehaviour
                         newMat.EnableKeyword(KeyWords.Emission);
                     newMat.SetVector("_UpVector", vectorUp);
 
-                    if (textureDitherSize == 1)
-                        newMat.SetTexture("_DitherPattern", textureDitherLarge);
-                    else
-                        newMat.SetTexture("_DitherPattern", textureDitherSmall);
+                    newMat.SetTexture("_DitherPattern", ditherSizeTextures[ditherSize]);
                     newMat.SetFloat("_DitherStart", smoothClipStartDistance);
+
+                    newMat.SetFloat("_Brightness", textureBrightness);
 
                     materials[i] = newMat;
                 }
@@ -1169,6 +1883,7 @@ public class TailOfArgonia : MonoBehaviour
                     Vector4 vectorUp = material.GetVector("_UpVector");
 
                     Material newMat = new Material(shaderBillboardBatchNoShadows);
+                    newMat.name = material.name;
                     newMat.SetColor("_Color", color);
                     newMat.SetFloat("_Cutoff", scaleCutoff);
                     newMat.SetTexture("_MainTex", texMain);
@@ -1179,11 +1894,56 @@ public class TailOfArgonia : MonoBehaviour
                         newMat.EnableKeyword(KeyWords.Emission);
                     newMat.SetVector("_UpVector", vectorUp);
 
-                    if (textureDitherSize == 1)
-                        newMat.SetTexture("_DitherPattern", textureDitherLarge);
-                    else
-                        newMat.SetTexture("_DitherPattern", textureDitherSmall);
+                    newMat.SetTexture("_DitherPattern", ditherSizeTextures[ditherSize]);
                     newMat.SetFloat("_DitherStart", smoothClipStartDistance);
+
+                    newMat.SetFloat("_Brightness", textureBrightness);
+
+                    materials[i] = newMat;
+                }
+                else if (material.shader.name == "Daggerfall/TilemapTextureArray" || material.shader == shaderTilemapTextureArray)
+                {
+                    Texture tileTextureArray = material.GetTexture("_TileTexArr");
+                    Texture tileNormalMapTextureArray = material.GetTexture("_TileNormalMapTexArr");
+                    Texture tileMetallicGlossMapTextureArray = material.GetTexture("_TileMetallicGlossMapTexArr");
+                    Texture tileMapTexture = material.GetTexture("_TilemapTex");
+                    int tileMapDim = material.GetInt("_TilemapDim");
+
+                    Material newMat = new Material(shaderTilemapTextureArray);
+                    newMat.name = material.name;
+                    newMat.SetTexture("_TileTexArr", tileTextureArray);
+                    newMat.SetTexture("_TileNormalMapTexArr", tileNormalMapTextureArray);
+                    if (material.IsKeywordEnabled("_NORMALMAP"))
+                        newMat.EnableKeyword("_NORMALMAP");
+                    else
+                        newMat.DisableKeyword("_NORMALMAP");
+                    newMat.SetTexture("_TileMetallicGlossMapTexArr", tileMetallicGlossMapTextureArray);
+                    newMat.SetTexture("_TilemapTex", tileMapTexture);
+                    newMat.SetInt("_TilemapDim", tileMapDim);
+
+                    newMat.SetTexture("_DitherPattern", ditherSizeTextures[ditherSize]);
+                    newMat.SetFloat("_DitherStart", smoothClipStartDistance);
+
+                    newMat.SetFloat("_Brightness", textureBrightness);
+
+                    materials[i] = newMat;
+                }
+                else if (material.shader.name == "Daggerfall/Tilemap" || material.shader == shaderTilemap)
+                {
+                    Texture tileSetTexture = material.GetTexture("_TileAtlasTex");
+                    Texture tileMapTexture = material.GetTexture("_TilemapTex");
+                    int tileMapDim = material.GetInt("_TilemapDim");
+
+                    Material newMat = new Material(shaderTilemap);
+                    newMat.name = material.name;
+                    newMat.SetTexture("_TileAtlasTex", tileSetTexture);
+                    newMat.SetTexture("_TilemapTex", tileMapTexture);
+                    newMat.SetInt("_TilemapDim", tileMapDim);
+
+                    newMat.SetTexture("_DitherPattern", ditherSizeTextures[ditherSize]);
+                    newMat.SetFloat("_DitherStart", smoothClipStartDistance);
+
+                    newMat.SetFloat("_Brightness", textureBrightness);
 
                     materials[i] = newMat;
                 }
@@ -1195,7 +1955,9 @@ public class TailOfArgonia : MonoBehaviour
 
         foreach (Terrain terrain in terrains)
         {
-            if (SystemInfo.supports2DArrayTextures && DaggerfallUnity.Settings.EnableTextureArrays)
+            //if (SystemInfo.supports2DArrayTextures && DaggerfallUnity.Settings.EnableTextureArrays)
+            //if (terrain.materialTemplate.shader.name == "Daggerfall/TilemapTextureArray" || terrain.materialTemplate.shader.name == "Daggerfall/AnimatedWater/TilemapTextureArray" || terrain.materialTemplate.shader == shaderTilemapTextureArray)
+            if (terrain.materialTemplate.shader.name == "Daggerfall/TilemapTextureArray" || terrain.materialTemplate.shader == shaderTilemapTextureArray)
             {
                 Texture tileTextureArray = terrain.materialTemplate.GetTexture("_TileTexArr");
                 Texture tileNormalMapTextureArray = terrain.materialTemplate.GetTexture("_TileNormalMapTexArr");
@@ -1204,6 +1966,7 @@ public class TailOfArgonia : MonoBehaviour
                 int tileMapDim = terrain.materialTemplate.GetInt("_TilemapDim");
 
                 Material newMat = new Material(shaderTilemapTextureArray);
+                newMat.name = terrain.materialTemplate.name;
                 newMat.SetTexture("_TileTexArr", tileTextureArray);
                 newMat.SetTexture("_TileNormalMapTexArr", tileNormalMapTextureArray);
                 if (terrain.materialTemplate.IsKeywordEnabled("_NORMALMAP"))
@@ -1214,30 +1977,30 @@ public class TailOfArgonia : MonoBehaviour
                 newMat.SetTexture("_TilemapTex", tileMapTexture);
                 newMat.SetInt("_TilemapDim", tileMapDim);
 
-                if (textureDitherSize == 1)
-                    newMat.SetTexture("_DitherPattern", textureDitherLarge);
-                else
-                    newMat.SetTexture("_DitherPattern", textureDitherSmall);
+                newMat.SetTexture("_DitherPattern", ditherSizeTextures[ditherSize]);
                 newMat.SetFloat("_DitherStart", smoothClipStartDistance);
+
+                newMat.SetFloat("_Brightness", textureBrightness);
 
                 terrain.materialTemplate = newMat;
             }
-            else
+            //else if (terrain.materialTemplate.shader.name == "Daggerfall/Tilemap" || terrain.materialTemplate.shader.name == "Daggerfall/AnimatedWater/Tilemap" || terrain.materialTemplate.shader == shaderTilemap)
+            else if (terrain.materialTemplate.shader.name == "Daggerfall/Tilemap" || terrain.materialTemplate.shader == shaderTilemap)
             {
                 Texture tileSetTexture = terrain.materialTemplate.GetTexture("_TileAtlasTex");
                 Texture tileMapTexture = terrain.materialTemplate.GetTexture("_TilemapTex");
                 int tileMapDim = terrain.materialTemplate.GetInt("_TilemapDim");
 
                 Material newMat = new Material(shaderTilemap);
+                newMat.name = terrain.materialTemplate.name;
                 newMat.SetTexture("_TileAtlasTex", tileSetTexture);
                 newMat.SetTexture("_TilemapTex", tileMapTexture);
                 newMat.SetInt("_TilemapDim", tileMapDim);
 
-                if (textureDitherSize == 1)
-                    newMat.SetTexture("_DitherPattern", textureDitherLarge);
-                else
-                    newMat.SetTexture("_DitherPattern", textureDitherSmall);
+                newMat.SetTexture("_DitherPattern", ditherSizeTextures[ditherSize]);
                 newMat.SetFloat("_DitherStart", smoothClipStartDistance);
+
+                newMat.SetFloat("_Brightness", textureBrightness);
 
                 terrain.materialTemplate = newMat;
             }

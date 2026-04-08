@@ -17,6 +17,7 @@ Shader "Daggerfall/Dither/Billboard" {
         _EmissionColor("Emission Color", Color) = (0,0,0)
         _DitherPattern ("Dithering Pattern", 2D) = "white" {}
         _DitherStart("Dithering Start", Range (0, 1)) = 0
+        _Brightness("Brightness", Range (0, 2)) = 1
     }
     SubShader {
         Tags { "IgnoreProjector" = "True" "RenderType" = "Opaque" "PreviewType" = "Plane" "CanUseSpriteAtlas" = "True" }
@@ -41,6 +42,7 @@ Shader "Daggerfall/Dither/Billboard" {
         sampler2D _DitherPattern;
         float4 _DitherPattern_TexelSize;
         float _DitherStart;
+        float _Brightness;
 
         struct Input {
             float2 uv_MainTex;
@@ -68,6 +70,8 @@ Shader "Daggerfall/Dither/Billboard" {
                 o.Albedo = albedo.rgb;
             #endif
             o.Alpha = albedo.a;
+
+            o.Albedo = o.Albedo * _Brightness;
             
             //Fade the pixels as they get closer to the camera's far clip plane (Start fading at half the distance and completely fade by the end)
             float distanceFromCamera = distance(IN.worldPos, _WorldSpaceCameraPos);
