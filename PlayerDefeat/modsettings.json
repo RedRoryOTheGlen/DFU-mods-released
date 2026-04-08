@@ -1,0 +1,68 @@
+{
+    "Version": null,
+    "Sections": [
+        {
+            "Name": "Main",
+            "Description": null,
+            "IsAdvanced": false,
+            "Keys": [
+                {
+                    "Min": 0,
+                    "Max": 100,
+                    "Value": 20,
+                    "Name": "SurvivalBaseChance",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.SliderIntKey"
+                },
+                {
+                    "Min": 0,
+                    "Max": 100,
+                    "Value": 10,
+                    "Name": "CaptureBaseChance",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.SliderIntKey"
+                },
+                {
+                    "Min": 0,
+                    "Max": 100,
+                    "Value": 10,
+                    "Name": "RescueBaseChance",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.SliderIntKey"
+                },
+                {
+                    "Min": 0,
+                    "Max": 100,
+                    "Value": 5,
+                    "Name": "DiseaseBaseChance",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.SliderIntKey"
+                },
+                {
+                    "Min": 0,
+                    "Max": 20,
+                    "Value": 10,
+                    "Name": "MaxLocationRange",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.SliderIntKey"
+                },
+                {
+                    "Value": {
+                        "First": 3,
+                        "Second": 6
+                    },
+                    "Name": "DaysPassedRange",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.TupleIntKey"
+                }
+            ],
+            "$version": "v1"
+        }
+    ]
+}

@@ -1,0 +1,423 @@
+{
+    "Version": null,
+    "Sections": [
+        {
+            "Name": "Reset",
+            "Description": "Enables repeatable lockpicking attempts",
+            "IsAdvanced": false,
+            "Keys": [
+                {
+                    "Min": 0.0,
+                    "Max": 10.0,
+                    "Value": 1.0,
+                    "Name": "Interval",
+                    "Description": "Failed pick attempts will reset after this amount of seconds",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.SliderFloatKey"
+                },
+                {
+                    "Value": true,
+                    "Name": "RequireTools",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
+                    "Value": true,
+                    "Name": "Alert",
+                    "Description": "Chance to alert guards or monsters when a failed pick attempt resets",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
+                    "Min": -100,
+                    "Max": 100,
+                    "Value": 0,
+                    "Name": "BaseAlertChance",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.SliderIntKey"
+                },
+                {
+                    "Value": false,
+                    "Name": "VanillaAlertFormula",
+                    "Description": "Uses the formula in UESP instead",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
+                    "Value": true,
+                    "Name": "ShowAlertMessage",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                }
+            ],
+            "$version": "v1"
+        },
+        {
+            "Name": ".",
+            "Description": null,
+            "IsAdvanced": false,
+            "Keys": [],
+            "$version": "v1"
+        },
+        {
+            "Name": "Dispel",
+            "Description": "Pick magical locks",
+            "IsAdvanced": false,
+            "Keys": [
+                {
+                    "Value": true,
+                    "Name": "Enable",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
+                    "Min": 1,
+                    "Max": 100,
+                    "Value": 95,
+                    "Name": "SkillRequirement",
+                    "Description": "",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.SliderIntKey"
+                },
+                {
+                    "Min": -100,
+                    "Max": 100,
+                    "Value": 0,
+                    "Name": "BaseChance",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.SliderIntKey"
+                },
+                {
+                    "Value": true,
+                    "Name": "RequireTools",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                }
+            ],
+            "$version": "v1"
+        },
+        {
+            "Name": "-",
+            "Description": null,
+            "IsAdvanced": false,
+            "Keys": [],
+            "$version": "v1"
+        },
+        {
+            "Name": "Disarm",
+            "Description": "Interact with trapped objects in STEAL mode to disarm them",
+            "IsAdvanced": false,
+            "Keys": [
+                {
+                    "Value": true,
+                    "Name": "Enable",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
+                    "Min": -100,
+                    "Max": 100,
+                    "Value": 0,
+                    "Name": "BaseChance",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.SliderIntKey"
+                },
+                {
+                    "Value": true,
+                    "Name": "RequireTools",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
+                    "Value": false,
+                    "Name": "AlwaysTriggerOnFail",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                }
+            ],
+            "$version": "v1"
+        },
+        {
+            "Name": "..",
+            "Description": null,
+            "IsAdvanced": false,
+            "Keys": [],
+            "$version": "v1"
+        },
+        {
+            "Name": "Thieves'Tools",
+            "Description": null,
+            "IsAdvanced": false,
+            "Keys": [
+                {
+                    "Min": 1,
+                    "Max": 10,
+                    "Value": 5,
+                    "Name": "ConditionDamage",
+                    "Description": "Damage to tools multiplied by lock level",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.SliderIntKey"
+                }
+            ],
+            "$version": "v1"
+        },
+        {
+            "Name": "--",
+            "Description": "",
+            "IsAdvanced": false,
+            "Keys": [],
+            "$version": "v1"
+        },
+        {
+            "Name": "RandomLockedDoors",
+            "Description": "Procedurally locks doors in dungeons and interiors",
+            "IsAdvanced": false,
+            "Keys": [
+                {
+                    "Value": true,
+                    "Name": "Enabled",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
+                    "Min": 0,
+                    "Max": 100,
+                    "Value": 50,
+                    "Name": "LockChance",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.SliderIntKey"
+                },
+                {
+                    "Value": true,
+                    "Name": "HidePeopleFlats",
+                    "Description": "Hides NPCs in residences when doors are locked",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                }
+            ],
+            "$version": "v1"
+        },
+        {
+            "Name": "....",
+            "Description": null,
+            "IsAdvanced": false,
+            "Keys": [],
+            "$version": "v1"
+        },
+        {
+            "Name": "Bash",
+            "Description": "Restored and expanded mechanics",
+            "IsAdvanced": false,
+            "Keys": [
+                {
+                    "Value": true,
+                    "Name": "Open",
+                    "Description": "",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
+                    "Min": -100,
+                    "Max": 100,
+                    "Value": 0,
+                    "Name": "BaseOpenChance",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.SliderIntKey"
+                },
+                {
+                    "Value": true,
+                    "Name": "Alert",
+                    "Description": "Bashing attracts wandering monsters or alerts guards",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
+                    "Min": -100,
+                    "Max": 100,
+                    "Value": 0,
+                    "Name": "BaseAlertChance",
+                    "Description": "",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.SliderIntKey"
+                },
+                {
+                    "Value": true,
+                    "Name": "Damage",
+                    "Description": "Bashing damages equipped weapon condition or player health if unarmed",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
+                    "Min": 0,
+                    "Max": 10,
+                    "Value": 5,
+                    "Name": "DamageMultiplier",
+                    "Description": "",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.SliderIntKey"
+                },
+                {
+                    "Value": false,
+                    "Name": "LockedOnly",
+                    "Description": "Only proc bash on locked doors",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
+                    "Value": false,
+                    "Name": "ResetPickAttempt",
+                    "Description": "Bashing a locked door resets failed pick attempt",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
+                    "Value": true,
+                    "Name": "ShowAlertMessage",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                }
+            ],
+            "$version": "v1"
+        },
+        {
+            "Name": "---",
+            "Description": null,
+            "IsAdvanced": false,
+            "Keys": [],
+            "$version": "v1"
+        },
+        {
+            "Name": "Compatibility",
+            "Description": null,
+            "IsAdvanced": false,
+            "Keys": [
+                {
+                    "Value": false,
+                    "Name": "SkulduggeryLockpick",
+                    "Description": "When equipped, Lockpick counts as Thieves' Tools",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                }
+            ],
+            "$version": "v1"
+        },
+        {
+            "Name": "...",
+            "Description": null,
+            "IsAdvanced": false,
+            "Keys": [],
+            "$version": "v1"
+        },
+        {
+            "Name": "----",
+            "Description": null,
+            "IsAdvanced": false,
+            "Keys": [],
+            "$version": "v1"
+        },
+        {
+            "Name": "Detection",
+            "Description": "Passively highlights hidden objects. ENABLE/DISABLE ONLY DURING STARTUP",
+            "IsAdvanced": true,
+            "Keys": [
+                {
+                    "Value": true,
+                    "Name": "Enable",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
+                    "Options": [
+                        "8",
+                        "16",
+                        "24",
+                        "32",
+                        "40",
+                        "48",
+                        "56",
+                        "64"
+                    ],
+                    "Value": 3,
+                    "Name": "Range",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.MultipleChoiceKey"
+                },
+                {
+                    "Min": -100,
+                    "Max": 100,
+                    "Value": 0,
+                    "Name": "BaseChance",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.SliderIntKey"
+                },
+                {
+                    "Value": true,
+                    "Name": "SpeedLimit",
+                    "Description": "Player must be grounded and moving less than half-speed to perform a search",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
+                    "Value": "KeypadMinus",
+                    "Name": "HighlightInput",
+                    "Description": "KeyCode used to enable highlight",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.TextKey"
+                },
+                {
+                    "Value": false,
+                    "Name": "ToggleHighlight",
+                    "Description": "Determines whether the highlight input must be pressed or acts as a toggle",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
+                    "Value": true,
+                    "Name": "ShowHighlightMessage",
+                    "Description": "Displays a message when the highlight input starts",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
+                    "Min": 0.0,
+                    "Max": 10.0,
+                    "Value": 5.0,
+                    "Name": "HighlightDuration",
+                    "Description": "Duration of initial highlight when a new object is flagged",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.SliderFloatKey"
+                },
+                {
+                    "Value": {
+                        "r": 255,
+                        "g": 0,
+                        "b": 0,
+                        "a": 255
+                    },
+                    "Name": "HighlightColor",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ColorKey"
+                }
+            ],
+            "$version": "v1"
+        }
+    ]
+}

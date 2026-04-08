@@ -1,24 +1,24 @@
 {
     "ModTitle": "Gyre and Gimble",
-    "ModVersion": "1.2",
+    "ModVersion": "1.1",
     "ModAuthor": "RedRoryOTheGlen",
     "ContactInfo": "rmufrancisco@gmail.com",
     "DFUnity_Version": "1.1.1",
     "ModDescription": "A collection of fixes and quality-of-life features for DFU's legacy mechanics",
     "GUID": "61bbddb4-7e8e-4ad1-bae6-5704a2649429",
     "Files": [
-        "Assets/Game/Mods/GyreAndGimble/Scripts/GyreAndGimble.cs",
-        "Assets/Game/Mods/GyreAndGimble/Textures/1234_0-2.PNG",
-        "Assets/Game/Mods/GyreAndGimble/Textures/1234_0-5.PNG",
-        "Assets/Game/Mods/GyreAndGimble/Textures/1234_0-6.PNG",
-        "Assets/Game/Mods/GyreAndGimble/Textures/1234_0-0.PNG",
-        "Assets/Game/Mods/GyreAndGimble/Textures/1234_0-7.PNG",
-        "Assets/Game/Mods/GyreAndGimble/Textures/1234_0-4.PNG",
-        "Assets/Game/Mods/GyreAndGimble/Textures/1234_0-8.PNG",
-        "Assets/Game/Mods/GyreAndGimble/Textures/1234_0-1.PNG",
-        "Assets/Game/Mods/GyreAndGimble/Textures/1234_0-3.PNG",
         "Assets/Game/Mods/GyreAndGimble/modsettings.json",
-        "Assets/Game/Mods/GyreAndGimble/GyreAndGimble.dfmod.json"
+        "Assets/Game/Mods/GyreAndGimble/Scripts/GyreAndGimble.cs",
+        "Assets/Game/Mods/GyreAndGimble/GyreAndGimble.dfmod.json",
+        "Assets/Game/Mods/GyreAndGimble/Textures/112394_0-4.PNG",
+        "Assets/Game/Mods/GyreAndGimble/Textures/112394_0-8.PNG",
+        "Assets/Game/Mods/GyreAndGimble/Textures/112394_0-7.PNG",
+        "Assets/Game/Mods/GyreAndGimble/Textures/112394_0-0.PNG",
+        "Assets/Game/Mods/GyreAndGimble/Textures/112394_0-3.PNG",
+        "Assets/Game/Mods/GyreAndGimble/Textures/112394_0-5.PNG",
+        "Assets/Game/Mods/GyreAndGimble/Textures/112394_0-6.PNG",
+        "Assets/Game/Mods/GyreAndGimble/Textures/112394_0-1.PNG",
+        "Assets/Game/Mods/GyreAndGimble/Textures/112394_0-2.PNG"
     ],
     "Dependencies": [
         {

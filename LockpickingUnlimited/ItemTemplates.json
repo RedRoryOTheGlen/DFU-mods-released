@@ -1,0 +1,22 @@
+[
+    {
+        "index": 1340,
+        "name": "Thieves' Tools",
+        "baseWeight": 5,
+        "hitPoints": 100,
+        "capacityOrTarget": 0,
+        "basePrice": 200,
+        "enchantmentPoints": 0,
+        "rarity": 1,
+        "variants": 0,
+        "drawOrderOrEffect": 0,
+        "isBluntWeapon": false,
+        "isLiquid": false,
+        "isOneHanded": false,
+        "isIngredient": false,
+        "worldTextureArchive": 112399,
+        "worldTextureRecord": 0,
+        "playerTextureArchive": 112399,
+        "playerTextureRecord": 0
+    },
+]

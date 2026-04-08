@@ -1,0 +1,20 @@
+{
+    "ModTitle": "LSO Fixer",
+    "ModVersion": "1.0",
+    "ModAuthor": "RedRoryOTheGlen",
+    "ContactInfo": "rmufrancisco@gmail.com",
+    "DFUnity_Version": "1.1.1",
+    "ModDescription": "Prevents your beloved allies from being claimed by the void",
+    "GUID": "9240c521-f53f-472d-b32d-cb459925a2d7",
+    "Files": [
+        "Assets/Game/Mods/LSOFIxer/LSOFixer.cs",
+        "Assets/Game/Mods/LSOFIxer/modsettings.json"
+    ],
+    "Dependencies": [
+        {
+            "Name": "language skills overhaul",
+            "IsOptional": false,
+            "IsPeer": true
+        }
+    ]
+}

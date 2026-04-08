@@ -1,0 +1,15 @@
+{
+    "ModTitle": "Trespasser",
+    "ModVersion": "1.2",
+    "ModAuthor": "RedRoryOTheGlen",
+    "ContactInfo": "rmufrancisco@gmail.com",
+    "DFUnity_Version": "1.1.1",
+    "ModDescription": "Quality-of-Life for Lockpicking afficionados",
+    "GUID": "6634dc2b-5feb-4bd6-9de5-a2bc9937651f",
+    "Files": [
+        "Assets/Game/Mods/LockpickingUnlimited/Scripts/LockpickingUnlimited.cs",
+        "Assets/Game/Mods/LockpickingUnlimited/ItemTemplates.json",
+        "Assets/Game/Mods/LockpickingUnlimited/Textures/112399_0-0.png",
+        "Assets/Game/Mods/LockpickingUnlimited/modsettings.json"
+    ]
+}

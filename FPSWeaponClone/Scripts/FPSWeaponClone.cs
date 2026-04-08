@@ -25,6 +25,8 @@ public class FPSWeaponClone : MonoBehaviour
 
     DaggerfallAudioSource dfAudioSource;
 
+    float moveTimer = 10;
+
     class WeaponAtlas
     {
         public string FileName { get; set; }
@@ -74,6 +76,7 @@ public class FPSWeaponClone : MonoBehaviour
     bool lastSheathed;
     float lastWeaponOffsetHeight;
     bool lastDoubleScale;
+    bool lastEnchanted;
 
     Dictionary<int, Texture2D> customTextures = new Dictionary<int, Texture2D>();
     Texture2D curCustomTexture;
@@ -151,6 +154,11 @@ public class FPSWeaponClone : MonoBehaviour
     int playMissVFXPos; //0 = body, 1 = crosshair
 
     bool mirrorBows;
+    bool mirrorTwoHandedSwords;
+    bool mirrorTwoHandedAxes;
+    bool mirrorTwoHandedBlunts;
+
+    float FOV;
 
     //Mod compatibility
 
@@ -162,6 +170,32 @@ public class FPSWeaponClone : MonoBehaviour
     Mod tomeOfBattle;
     float tomeOfBattleWeaponReach = 2.25f;
     KeyCode tomeOfBattleSwingKeyCode = KeyCode.None;
+
+    Mod fpsModels;
+    Animator fpsModelsAnimator;
+
+    //custom weapon override
+    public struct WeaponOverride
+    {
+        public string Filename;
+        public bool HasMagicTextures;
+        public bool OverrideRecovery;
+        public bool OverrideAlignment;
+        public bool OverrideMirror;
+        public bool OverrideOffset;
+
+        public WeaponOverride(string filename, bool hasMagicTextures, bool overrideRecovery, bool overrideAlignment, bool overrideMirror, bool overrideOffset)
+        {
+            Filename = filename;
+            HasMagicTextures = hasMagicTextures;
+            OverrideRecovery = overrideRecovery;
+            OverrideAlignment = overrideAlignment;
+            OverrideMirror = overrideMirror;
+            OverrideOffset = overrideOffset;
+        }
+    }
+    //itemTemplateIndex and Filename
+    Dictionary<int, WeaponOverride> customWeaponOverrides = new Dictionary<int, WeaponOverride>();
 
     static Mod mod;
     [Invoke(StateManager.StateTypes.Start, 0)]
@@ -184,11 +218,6 @@ public class FPSWeaponClone : MonoBehaviour
             cifFile.Palette.Load(Path.Combine(DaggerfallUnity.Instance.Arena2Path, cifFile.PaletteName));
         }
 
-        mod.LoadSettingsCallback = LoadSettings;
-        mod.LoadSettings();
-
-        ModCompatibilityChecking();
-
         if (DaggerfallUnity.Settings.Handedness == 1)
             leftHanded = true;
 
@@ -199,8 +228,20 @@ public class FPSWeaponClone : MonoBehaviour
             vanillaDFAS.AudioSource.mute = true;
 
         mod.MessageReceiver = MessageReceiver;
+    }
+
+    private void Start()
+    {
+        mod.LoadSettingsCallback = LoadSettings;
+        mod.LoadSettings();
+
+        ModCompatibilityChecking();
+
+        FOV = GameManager.Instance.MainCamera.fieldOfView;
+
         mod.IsReady = true;
     }
+
     void MessageReceiver(string message, object data, DFModMessageCallback callBack)
     {
         switch (message)
@@ -229,11 +270,26 @@ public class FPSWeaponClone : MonoBehaviour
                 OnOffsetChange += data as Action<Vector2>;
                 break;
 
+            case "registerCustomWeapon":
+                RegisterCustomWeaponFilename(data as object[]);
+                break;
+
             default:
                 Debug.LogErrorFormat("{0}: unknown message received ({1}).", this, message);
                 break;
         }
     }
+
+    void RegisterCustomWeaponFilename(object[] data)
+    {
+        if (customWeaponOverrides.ContainsKey((int)data[0]))
+        {
+            customWeaponOverrides[(int)data[0]] = new WeaponOverride((string)data[1], (bool)data[2], (bool)data[3], (bool)data[4], (bool)data[5], (bool)data[6]);
+        }
+        else
+            customWeaponOverrides.Add((int)data[0], new WeaponOverride((string)data[1], (bool)data[2], (bool)data[3], (bool)data[4], (bool)data[5], (bool)data[6]));
+    }
+
     private void LoadSettings(ModSettings settings, ModSettingsChange change)
     {
         if (change.HasChanged("Modules"))
@@ -296,6 +352,9 @@ public class FPSWeaponClone : MonoBehaviour
         if (change.HasChanged("Miscellaneous"))
         {
             mirrorBows = settings.GetValue<bool>("Miscellaneous", "MirrorBows");
+            mirrorTwoHandedSwords = settings.GetValue<bool>("Miscellaneous", "MirrorTwoHandedSwords");
+            mirrorTwoHandedAxes = settings.GetValue<bool>("Miscellaneous", "MirrorTwoHandedAxes");
+            mirrorTwoHandedBlunts = settings.GetValue<bool>("Miscellaneous", "MirrorTwoHandedBlunts");
         }
         if (change.HasChanged("TrueTextureSize"))
         {
@@ -322,14 +381,27 @@ public class FPSWeaponClone : MonoBehaviour
 
         //check if Tome of Battle is installed
         tomeOfBattle = ModManager.Instance.GetModFromGUID("a166c215-0a5a-4582-8bf3-8be8df80d5e5");
+
+        //Check for FPSModels and grab the Animator
+        fpsModels = ModManager.Instance.GetModFromGUID("41284af0-81c7-4630-bbc5-a976efa162a0");
+        if (fpsModels != null)
+        {
+            ModManager.Instance.SendModMessage(fpsModels.Title, "getAnimator", null, (string message, object data) =>
+            {
+                fpsModelsAnimator = (Animator)data;
+            });
+        }
     }
     public void OnAttackDamageCalculated(DaggerfallEntity attacker, DaggerfallEntity target, DaggerfallUnityItem weapon, int bodyPart, int damage)
     {
         //if attacker is not the player or there is no target or recoil is disabled, do nothing
-        if (attacker != GameManager.Instance.PlayerEntity || target == null || !recoil)
+        if (attacker != GameManager.Instance.PlayerEntity || target == null)
             return;
 
         float value = UnityEngine.Random.value;
+
+        if (!recoil)
+            return;
 
         if (damage > 0)
         {
@@ -410,6 +482,7 @@ public class FPSWeaponClone : MonoBehaviour
         c.OneShot = true;
         c.FramesPerSecond = 20;
     }
+
     void PlayAttackAnimation(WeaponStates state)
     {   
         if (animating != null)
@@ -438,8 +511,14 @@ public class FPSWeaponClone : MonoBehaviour
     }
     IEnumerator PlayWeaponAnimation(WeaponStates state)
     {
+
+        if (fpsModels != null && fpsModelsAnimator != null)
+            fpsModelsAnimator.SetFloat("Direction", 1);
+
         hasCurrentAttackHit = false;
         animatingCancel = false;
+
+        DaggerfallUnityItem shield = GameManager.Instance.PlayerEntity.ItemEquipTable.GetItem(EquipSlots.LeftHand);
 
         float tickTime = (GetAnimTickTime()/5)/swingSpeed;
 
@@ -448,7 +527,17 @@ public class FPSWeaponClone : MonoBehaviour
         else
             ChangeWeaponState(WeaponStates.Idle);
 
-        if (swingRecoveryOverride && state == WeaponStates.StrikeUp)
+        string animGroup = GetWeaponAnimationGroup(SpecificWeapon);
+
+        if (fpsModels != null && fpsModelsAnimator != null)
+        {
+            fpsModelsAnimator.CrossFadeInFixedTime(animGroup + state.ToString() + "_Start", 0.2f / swingSpeed);
+
+            if (shield != null && shield.IsShield)
+                fpsModelsAnimator.CrossFadeInFixedTime(GetShieldAnimationGroup(shield) + "Start", 0.25f);
+        }
+
+        if (swingRecoveryOverride && CheckForRecoveryOverride())
             tickTime *= 0.5f;
 
         //wait for hitframe
@@ -458,15 +547,7 @@ public class FPSWeaponClone : MonoBehaviour
                 currentFrame = 0;
             else if (swingWindup == 1)
             {
-                if (currentWeaponType == WeaponTypes.Werecreature)
-                {
-                    offsetTarget = new Vector2(0, 1);
-                }
-                else if (currentWeaponType == WeaponTypes.Melee)
-                {
-                    offsetTarget = new Vector2(1, 1);
-                }
-                else
+                if (CheckForOffsetOverride())
                 {
                     if (ScreenWeapon.FlipHorizontal)
                     {
@@ -491,6 +572,10 @@ public class FPSWeaponClone : MonoBehaviour
                             offsetTarget = new Vector2(1, 0);
                     }
                 }
+                else
+                {
+                    offsetTarget = new Vector2(0, 1);
+                }
             }
             else
                 currentFrame = -1;
@@ -498,6 +583,9 @@ public class FPSWeaponClone : MonoBehaviour
         }
 
         ChangeWeaponState(state);
+
+        if (fpsModels != null && fpsModelsAnimator != null)
+            fpsModelsAnimator.Play(animGroup + state.ToString() + "_Release");
 
         PlaySwingSound();
 
@@ -508,8 +596,12 @@ public class FPSWeaponClone : MonoBehaviour
             RacialOverrideEffect racialOverride = GameManager.Instance.PlayerEffectManager.GetRacialOverrideEffect();
             bool suppressCombatVoices = racialOverride != null && racialOverride.SuppressOptionalCombatVoices;
 
-            if (!suppressCombatVoices && ScreenWeapon.WeaponType != WeaponTypes.Bow && Dice100.SuccessRoll(20))
-                PlayAttackVoice();
+            //if (!suppressCombatVoices && ScreenWeapon.WeaponType != WeaponTypes.Bow && Dice100.SuccessRoll(20))
+            int chance = 20;
+            if (GameManager.Instance.PlayerEffectManager.IsTransformedLycanthrope())
+                chance = 10;
+            if (ScreenWeapon.WeaponType != WeaponTypes.Bow && Dice100.SuccessRoll(chance))
+                PlayAttackSound();
         }
 
         //check for static object
@@ -536,7 +628,17 @@ public class FPSWeaponClone : MonoBehaviour
                 yield return new WaitForSeconds(tickTime);
             }
 
-            yield return new WaitForSeconds(tickTime * 3);
+            if (fpsModels != null && fpsModelsAnimator != null && hasCurrentAttackHit && state != WeaponStates.StrikeUp)
+            {
+                yield return new WaitForSeconds(tickTime * 1f);
+
+                //recoil effect
+                fpsModelsAnimator.SetFloat("Direction", -1);
+
+                yield return new WaitForSeconds(tickTime * 2f);
+            }
+            else
+                yield return new WaitForSeconds(tickTime * 3);
         }
         else
         {
@@ -557,10 +659,14 @@ public class FPSWeaponClone : MonoBehaviour
         if (swingRecoveryOverride)
             recoveryOverride = CheckForRecoveryOverride();
 
+
         while (ScreenWeapon.IsAttacking())
         {
             if (recoveryOverride || hasCurrentAttackHit)
             {
+                /*if (ArmsAnimator)
+                    ArmsAnimator.CrossFadeInFixedTime("Recoil",0.1f,0);*/
+
                 while (currentFrame > 0)
                 {
                     offsetCurrent = Vector2.zero;
@@ -592,9 +698,20 @@ public class FPSWeaponClone : MonoBehaviour
         //reset to idle
         ChangeWeaponState(WeaponStates.Idle);
 
+        if (fpsModels != null && fpsModelsAnimator != null)
+        {
+            if (hasCurrentAttackHit)
+                fpsModelsAnimator.CrossFadeInFixedTime(animGroup + "Idle", 0.25f);
+            else
+                fpsModelsAnimator.CrossFadeInFixedTime(animGroup + state.ToString() + "_Recovery", 0.25f);
+
+            if (shield != null && shield.IsShield)
+                fpsModelsAnimator.CrossFadeInFixedTime(GetShieldAnimationGroup(shield) + "Recovery", 0.25f);
+        }
+
         //set current offset
         float offsetX = 1f;
-        if (currentWeaponType == WeaponTypes.Werecreature)
+        if (!CheckForOffsetOverride())
         {
             offsetX = 0f;
         }
@@ -640,8 +757,12 @@ public class FPSWeaponClone : MonoBehaviour
                     RacialOverrideEffect racialOverride = GameManager.Instance.PlayerEffectManager.GetRacialOverrideEffect();
                     bool suppressCombatVoices = racialOverride != null && racialOverride.SuppressOptionalCombatVoices;
 
-                    if (!suppressCombatVoices && ScreenWeapon.WeaponType != WeaponTypes.Bow && Dice100.SuccessRoll(20))
-                        PlayAttackVoice();
+                    //if (!suppressCombatVoices && ScreenWeapon.WeaponType != WeaponTypes.Bow && Dice100.SuccessRoll(20))
+                    int chance = 20;
+                    if (GameManager.Instance.PlayerEffectManager.IsTransformedLycanthrope())
+                        chance = 10;
+                    if (ScreenWeapon.WeaponType != WeaponTypes.Bow && Dice100.SuccessRoll(chance))
+                        PlayAttackSound();
                 }
 
                 if (recoil && recoilEnvironment)
@@ -683,7 +804,7 @@ public class FPSWeaponClone : MonoBehaviour
 
         //set current offset
         float offsetX = 1f;
-        if (currentWeaponType == WeaponTypes.Werecreature)
+        if (!CheckForOffsetOverride())
         {
             offsetX = 0f;
         }
@@ -841,12 +962,15 @@ public class FPSWeaponClone : MonoBehaviour
     }*/
     IEnumerator PlayBowAnimation()
     {
+        float cooldownTime = 0;
         if (DaggerfallUnity.Settings.BowDrawback)
         {
             currentFrame = 0;
             ChangeWeaponState(WeaponStates.StrikeUp);
             UpdateWeapon();
 
+            if (fpsModels != null && fpsModelsAnimator != null)
+                fpsModelsAnimator.CrossFadeInFixedTime(GetWeaponAnimationGroup(SpecificWeapon) + "Start", 0.2f / swingSpeed);
 
             float drawTime = 12;
             float drawTimer = 0;
@@ -882,6 +1006,9 @@ public class FPSWeaponClone : MonoBehaviour
                 ChangeWeaponState(WeaponStates.StrikeDown);
                 UpdateWeapon();
 
+                if (fpsModels != null && fpsModelsAnimator != null)
+                    fpsModelsAnimator.Play(GetWeaponAnimationGroup(SpecificWeapon) + "Release");
+
                 PlaySwingSound();
 
                 yield return new WaitForSeconds(GameManager.classicUpdateInterval);
@@ -891,6 +1018,21 @@ public class FPSWeaponClone : MonoBehaviour
                 {
                     offsetTarget = Vector2.zero;
                     offsetCurrent = Vector2.zero;
+
+                    if (currentFrame == ScreenWeapon.GetHitFrame())
+                    {
+                        if (tomeOfBattle != null)
+                        {
+                            ModManager.Instance.SendModMessage(tomeOfBattle.Title, "getReloadTime", null, (string message, object data) =>
+                            {
+                                cooldownTime = Time.time + (float)data;
+                            });
+                        }
+                        else
+                        {
+                            cooldownTime = Time.time + FormulaHelper.GetBowCooldownTime(GameManager.Instance.PlayerEntity);
+                        }
+                    }
 
                     currentFrame++;
                     UpdateWeapon();
@@ -912,10 +1054,20 @@ public class FPSWeaponClone : MonoBehaviour
                 }
             }
 
+            //wait for end of reload
+            while (Time.time < cooldownTime)
+            {
+                offsetTarget = Vector2.up;
+                yield return new WaitForEndOfFrame();
+            }
+
             //reset to idle
             ChangeWeaponState(WeaponStates.Idle);
             currentFrame = 0;
             UpdateWeapon();
+
+            if (fpsModels != null && fpsModelsAnimator != null)
+                fpsModelsAnimator.CrossFadeInFixedTime(GetWeaponAnimationGroup(SpecificWeapon) + "Recovery", 0.25f);
         }
         else
         {
@@ -923,9 +1075,23 @@ public class FPSWeaponClone : MonoBehaviour
             ChangeWeaponState(WeaponStates.StrikeDown);
             UpdateWeapon();
 
+            if (fpsModels != null && fpsModelsAnimator != null)
+                fpsModelsAnimator.Play(GetWeaponAnimationGroup(SpecificWeapon) + "Release");
+
             yield return new WaitForSeconds(GameManager.classicUpdateInterval);
 
             PlaySwingSound();
+            if (tomeOfBattle != null)
+            {
+                ModManager.Instance.SendModMessage(tomeOfBattle.Title, "getReloadTime", null, (string message, object data) =>
+                {
+                    cooldownTime = Time.time + (float)data;
+                });
+            }
+            else
+                cooldownTime = Time.time + FormulaHelper.GetBowCooldownTime(GameManager.Instance.PlayerEntity);
+
+            yield return new WaitForSeconds(GameManager.classicUpdateInterval);
 
             //play the shoot animation
             while (currentFrame < weaponAnims[(int)weaponState].NumFrames - 1)
@@ -939,8 +1105,8 @@ public class FPSWeaponClone : MonoBehaviour
                 yield return new WaitForSeconds(GameManager.classicUpdateInterval);
             }
 
-            //wait for end of attack
-            while (ScreenWeapon.IsAttacking())
+            //wait for end of reload
+            while (Time.time < cooldownTime)
             {
                 offsetTarget = Vector2.up;
                 yield return new WaitForEndOfFrame();
@@ -950,6 +1116,9 @@ public class FPSWeaponClone : MonoBehaviour
             currentFrame = 3;
             ChangeWeaponState(WeaponStates.StrikeDown);
             UpdateWeapon();
+
+            if (fpsModels != null && fpsModelsAnimator != null)
+                fpsModelsAnimator.CrossFadeInFixedTime(GetWeaponAnimationGroup(SpecificWeapon) + "Start", 0.25f);
         }
 
         //set current offset
@@ -959,6 +1128,7 @@ public class FPSWeaponClone : MonoBehaviour
         //clear coroutine
         animating = null;
     }
+
     public void ChangeWeaponState(WeaponStates state)
     {
         weaponState = state;
@@ -996,8 +1166,8 @@ public class FPSWeaponClone : MonoBehaviour
         if (weaponAtlas == null ||
             ScreenWeapon.WeaponType != currentWeaponType ||
             ScreenWeapon.MetalType != currentMetalType ||
-            (FPSWeapon.moddedWeaponHUDAnimsEnabled && SpecificWeapon != null && SpecificWeapon.TemplateIndex != currentTemplateIndex)
-            || doubleScale != lastDoubleScale) //weapon widget specific code
+            (SpecificWeapon != null && (SpecificWeapon.TemplateIndex != currentTemplateIndex || SpecificWeapon.IsEnchanted != lastEnchanted)) ||
+            doubleScale != lastDoubleScale) //weapon widget specific code
         {
             LoadWeaponAtlas();
             if (weaponAtlas == null)
@@ -1033,9 +1203,30 @@ public class FPSWeaponClone : MonoBehaviour
             {
                 //sheathed the weapon
                 if (lastSheathed == false)
+                {
                     PlaySheatheSound();
+                    if (fpsModels != null && fpsModelsAnimator != null)
+                    {
+                        fpsModelsAnimator.CrossFadeInFixedTime(GetWeaponAnimationGroup(SpecificWeapon) + "Sheathe", 0.25f);
+
+                        DaggerfallUnityItem shield = GameManager.Instance.PlayerEntity.ItemEquipTable.GetItem(EquipSlots.LeftHand);
+                        if (shield != null && shield.IsShield)
+                            fpsModelsAnimator.CrossFadeInFixedTime(GetShieldAnimationGroup(shield) + "Sheathe", 0.25f);
+                    }
+
+                }
                 else
+                {
                     PlayUnsheatheSound();
+                    if (fpsModels != null && fpsModelsAnimator != null)
+                    {
+                        fpsModelsAnimator.CrossFadeInFixedTime(GetWeaponAnimationGroup(SpecificWeapon) + "Draw", 0.25f);
+
+                        DaggerfallUnityItem shield = GameManager.Instance.PlayerEntity.ItemEquipTable.GetItem(EquipSlots.LeftHand);
+                        if (shield != null && shield.IsShield)
+                            fpsModelsAnimator.CrossFadeInFixedTime(GetShieldAnimationGroup(shield) + "Draw", 0.25f);
+                    }
+                }
                 lastSheathed = GameManager.Instance.WeaponManager.Sheathed;
             }
             lastWeaponOffsetHeight = weaponOffsetHeight;
@@ -1044,9 +1235,19 @@ public class FPSWeaponClone : MonoBehaviour
 
         // Update weapon state only as needed
         if (updateWeapon)
+        {
             UpdateWeapon();
 
-        if (Event.current.type.Equals(EventType.Repaint) && currentFrame != -1 && ShowWeapon && !isInThirdPerson && !(!offset && (GameManager.Instance.WeaponManager.Sheathed || GameManager.Instance.PlayerSpellCasting.IsPlayingAnim || GameManager.Instance.PlayerEffectManager.HasReadySpell)))
+            /*if (fpsModels != null && fpsModelsAnimator != null)
+            {
+                if (GameManager.Instance.WeaponManager.Sheathed)
+                    fpsModelsAnimator.Play(GetMeleeWeaponAnimationGroup(SpecificWeapon) + "Sheathe", -1, 1f);
+                else
+                    fpsModelsAnimator.Play(GetMeleeWeaponAnimationGroup(SpecificWeapon) + "Draw", -1, 1f);
+            }*/
+        }
+
+        if (fpsModels == null && Event.current.type.Equals(EventType.Repaint) && currentFrame != -1 && ShowWeapon && !isInThirdPerson && !(!offset && (GameManager.Instance.WeaponManager.Sheathed || GameManager.Instance.PlayerSpellCasting.IsPlayingAnim || GameManager.Instance.PlayerEffectManager.HasReadySpell || ((GameManager.Instance.WeaponManager.UsingRightHand && GameManager.Instance.WeaponManager.EquipCountdownRightHand > 0) || (!GameManager.Instance.WeaponManager.UsingRightHand && GameManager.Instance.WeaponManager.EquipCountdownLeftHand > 0)))))
         {
             // Draw weapon texture behind other HUD elements
             GUI.depth = 1;
@@ -1056,6 +1257,7 @@ public class FPSWeaponClone : MonoBehaviour
         }
 
         lastDoubleScale = doubleScale;
+        lastEnchanted = SpecificWeapon != null ? SpecificWeapon.IsEnchanted : false;
     }
 
     //Combines the base WeaponPosition Rect with Position, Scale and Offset
@@ -1063,6 +1265,13 @@ public class FPSWeaponClone : MonoBehaviour
     {
         Rect weaponPositionOffset = weaponPosition;
         bool mirror = GameManager.Instance.WeaponManager.ScreenWeapon.FlipHorizontal;
+
+        //scale based on current FOV?
+        float zoom = 2 - (GameManager.Instance.MainCamera.fieldOfView / FOV);
+        weaponPositionOffset.x *= zoom;
+        weaponPositionOffset.y *= zoom;
+        weaponPositionOffset.width *= zoom;
+        weaponPositionOffset.height *= zoom;
 
         //Adds the Position to the Rect's position)
         if (mirror)
@@ -1108,7 +1317,11 @@ public class FPSWeaponClone : MonoBehaviour
         float reach = GameManager.Instance.WeaponManager.ScreenWeapon.Reach;
 
         if (tomeOfBattle != null)
+        {
             reach = tomeOfBattleWeaponReach;
+            if (weaponState == WeaponStates.StrikeUp)
+                reach *= 1.25f;
+        }
 
         LayerMask layerMask = ~(1 << LayerMask.NameToLayer("Player"));
         layerMask = layerMask & ~(1 << LayerMask.NameToLayer("Ignore Raycast"));
@@ -1138,9 +1351,9 @@ public class FPSWeaponClone : MonoBehaviour
             return true;
         }
 
-        // Check if player hit a static door
+        /*// Check if player hit a static door
         if (GameManager.Instance.PlayerActivate.AttemptExteriorDoorBash(hit))
-            return true;
+            return true;*/
 
         // Make hitting walls do a thud or clinging sound (not in classic)
         if (GameObjectHelper.IsStaticGeometry(hit.transform.gameObject))
@@ -1159,6 +1372,15 @@ public class FPSWeaponClone : MonoBehaviour
         Scale = Vector2.one;
         Offset = Vector2.zero;
 
+        //move sound handler
+        if (moveTimer < 0)
+        {
+            PlayMoveSound();
+            moveTimer = UnityEngine.Random.Range(4, 20);
+        }
+        else
+            moveTimer -= Time.deltaTime;
+
         if (ScreenWeapon.SpecificWeapon != SpecificWeapon)
         {
             if (ScreenWeapon.SpecificWeapon != null)
@@ -1169,6 +1391,9 @@ public class FPSWeaponClone : MonoBehaviour
                 {
                     currentFrame = 3;
                     ChangeWeaponState(WeaponStates.StrikeDown);
+
+                    if (fpsModels != null && fpsModelsAnimator != null)
+                        fpsModelsAnimator.Play(GetWeaponAnimationGroup(SpecificWeapon) + "Release",-1,1f);
                 }
                 else
                     ChangeWeaponState(WeaponStates.Idle);
@@ -1246,10 +1471,24 @@ public class FPSWeaponClone : MonoBehaviour
                 }
                 else
                 {
-                    if (ScreenWeapon.FlipHorizontal != leftHanded)
+                    if (CheckForMirrorOverride())
                     {
-                        ScreenWeapon.FlipHorizontal = leftHanded;
-                        ChangeWeaponState(WeaponStates.Idle);
+                        //if main-hand is a 2-handed melee weapon, use flip
+                        if (ScreenWeapon.FlipHorizontal != !leftHanded)
+                        {
+                            ScreenWeapon.FlipHorizontal = !leftHanded;
+
+                            ChangeWeaponState(WeaponStates.Idle);
+                        }
+                    }
+                    else
+                    {
+                        if (ScreenWeapon.FlipHorizontal != leftHanded)
+                        {
+                            ScreenWeapon.FlipHorizontal = leftHanded;
+
+                            ChangeWeaponState(WeaponStates.Idle);
+                        }
                     }
                 }
             }
@@ -1310,12 +1549,18 @@ public class FPSWeaponClone : MonoBehaviour
                 if (GameManager.Instance.WeaponManager.UsingRightHand)
                 {
                     if (GameManager.Instance.WeaponManager.EquipCountdownRightHand > 0)
+                    {
                         offsetTarget = Vector2.one * 2;
+                        offsetCurrent = offsetTarget;
+                    }
                 }
                 else
                 {
                     if (GameManager.Instance.WeaponManager.EquipCountdownLeftHand > 0)
+                    {
                         offsetTarget = Vector2.one * 2;
+                        offsetCurrent = offsetTarget;
+                    }
                 }
             }
 
@@ -1330,7 +1575,7 @@ public class FPSWeaponClone : MonoBehaviour
         //bob
 
         bool canBob = false;
-        if (weaponState == WeaponStates.Idle || (currentWeaponType == WeaponTypes.Bow && (weaponState == WeaponStates.StrikeUp || weaponState == WeaponStates.StrikeDown)))
+        if (ScreenWeapon.WeaponState == WeaponStates.Idle || (currentWeaponType == WeaponTypes.Bow && (weaponState == WeaponStates.StrikeUp || weaponState == WeaponStates.StrikeDown)))
             canBob = true;
 
 
@@ -1468,6 +1713,11 @@ public class FPSWeaponClone : MonoBehaviour
 
         if (ScreenWeapon.ShowWeapon)
             ScreenWeapon.ShowWeapon = false;
+
+        /*if (fpsModels != null && fpsModelsGameObject != null)
+        {
+            fpsModelsGameObject.transform.localPosition = new Vector3(Position.x, Position.y, Scale.magnitude)/1000f;
+        }*/
     }
 
     private void UpdateWeapon()
@@ -1525,10 +1775,9 @@ public class FPSWeaponClone : MonoBehaviour
             WeaponAnimation anim = weaponAnims[(int)weaponState];
 
             //if (weaponState == WeaponStates.StrikeDown && (ScreenWeapon.WeaponType == WeaponTypes.Mace || ScreenWeapon.WeaponType != WeaponTypes.Mace_Magic))
-            if (swingAlignmentOverride)
+            if (OverrideAlignment())
             {
-                if ((weaponState == WeaponStates.StrikeDown || (weaponState == WeaponStates.StrikeUp && !(currentWeaponType == WeaponTypes.Battleaxe || currentWeaponType == WeaponTypes.Battleaxe_Magic || currentWeaponType == WeaponTypes.Warhammer || currentWeaponType == WeaponTypes.Warhammer_Magic))) && !(currentWeaponType == WeaponTypes.Melee || currentWeaponType == WeaponTypes.Bow || currentWeaponType == WeaponTypes.Dagger || currentWeaponType == WeaponTypes.Dagger_Magic))
-                    anim.Alignment = WeaponAlignment.Center;
+                anim.Alignment = WeaponAlignment.Center;
             }
 
             // Get weapon dimensions
@@ -1537,7 +1786,7 @@ public class FPSWeaponClone : MonoBehaviour
 
             if (isImported)
             {
-                if (trueSize)
+                if (trueSize || (SpecificWeapon != null && customWeaponOverrides.ContainsKey(SpecificWeapon.TemplateIndex)))
                 {
                     width = curCustomTexture.width / textureScaleFactor;
                     height = curCustomTexture.height / textureScaleFactor;
@@ -1623,7 +1872,7 @@ public class FPSWeaponClone : MonoBehaviour
 
     private void AlignCenter(WeaponAnimation anim, int width, int height)
     {
-        if (swingAlignmentOverride && (weaponState == WeaponStates.StrikeDown || weaponState == WeaponStates.StrikeUp) && !(currentWeaponType == WeaponTypes.Bow || currentWeaponType == WeaponTypes.Melee || currentWeaponType == WeaponTypes.Dagger || currentWeaponType == WeaponTypes.Dagger_Magic || currentWeaponType == WeaponTypes.Warhammer || currentWeaponType == WeaponTypes.Warhammer_Magic))
+        if (OverrideAlignment())
         {
             if (ScreenWeapon.FlipHorizontal)
             {
@@ -1726,6 +1975,65 @@ public class FPSWeaponClone : MonoBehaviour
         return tickTime;
     }
 
+    string GetWeaponAnimationGroup(DaggerfallUnityItem weapon)
+    {
+        if (weapon != null)
+        {
+        switch (weapon.TemplateIndex)
+            {
+            case (int)Weapons.Broadsword:
+            case (int)Weapons.Katana:
+            case (int)Weapons.Longsword:
+            case (int)Weapons.Saber:
+            case (int)Weapons.Shortsword:
+            case (int)Weapons.Wakazashi:
+                return "OneHanded_";
+            case (int)Weapons.Battle_Axe:
+            case (int)Weapons.Mace:
+            case 513:   //Archer's Axe from Roleplay & Realism - Items
+            case 514:   //Light Flail from Roleplay & Realism - Items
+                return "OneHandedPole_";
+            case (int)Weapons.Dagger:
+            case (int)Weapons.Tanto:
+                return "OneHandedShort_";
+            case (int)Weapons.Dai_Katana:
+            case (int)Weapons.Claymore:
+                return "TwoHandedSword_";
+            case (int)Weapons.War_Axe:
+            case (int)Weapons.Flail:
+            case (int)Weapons.Staff:
+            case (int)Weapons.Warhammer:
+            case 1308:  //Spear from TOBA
+                return "TwoHandedPole_";
+            case (int)Weapons.Short_Bow:
+            case (int)Weapons.Long_Bow:
+                return "Bow_";
+            case 1307:  //Crossbow from TOBA
+                return "Crossbow_";
+            }
+        }
+
+        return "Unarmed_";
+    }
+
+    string GetShieldAnimationGroup(DaggerfallUnityItem shield)
+    {
+        if (shield != null)
+        {
+            switch (shield.TemplateIndex)
+            {
+                case (int)Armor.Buckler:
+                    return "ShieldHand_";
+                case (int)Armor.Round_Shield:
+                case (int)Armor.Kite_Shield:
+                case (int)Armor.Tower_Shield:
+                    return "ShieldArm_";
+            }
+        }
+
+        return "Unarmed_";
+    }
+
     private WeaponAtlas GetWeaponTextureAtlas(
             string filename,
             MetalTypes metalType,
@@ -1779,19 +2087,27 @@ public class FPSWeaponClone : MonoBehaviour
             {
                 string moddedFileName = filename;
 
-                if (FPSWeapon.moddedWeaponHUDAnimsEnabled && SpecificWeapon != null)
+                if (SpecificWeapon != null)
                 {
-                    moddedFileName = WeaponBasics.GetModdedWeaponFilename(SpecificWeapon);
+                    //check for custom weapon
+                    string customWeaponFilename = GetCustomWeaponFilename(SpecificWeapon);
 
-                    if (string.IsNullOrEmpty(moddedFileName))
-                        moddedFileName = WeaponBasics.GetWeaponFilename(ScreenWeapon.WeaponType); // Possibly make support for custom weapon types for the HUD in the future.
+                    if (!string.IsNullOrEmpty(customWeaponFilename))
+                        moddedFileName = customWeaponFilename;
+                    else if (FPSWeapon.moddedWeaponHUDAnimsEnabled)
+                    {
+                        moddedFileName = WeaponBasics.GetModdedWeaponFilename(SpecificWeapon);
+
+                        if (string.IsNullOrEmpty(moddedFileName))
+                            moddedFileName = WeaponBasics.GetWeaponFilename(ScreenWeapon.WeaponType); // Possibly make support for custom weapon types for the HUD in the future.
+                    }
                 }
 
                 Texture2D tex;
 
                 string doubleScaleFileName = "w_" + moddedFileName;
 
-                Debug.Log("WEAPON WIDGET - LOADING " + doubleScaleFileName);
+                //Debug.Log("WEAPON WIDGET - LOADING " + doubleScaleFileName);
 
                 if (doubleScale && TextureReplacement.TryImportCifRci(doubleScaleFileName, record, frame, metalType, true, out tex))
                 {
@@ -1905,6 +2221,9 @@ public class FPSWeaponClone : MonoBehaviour
     {
         bool hasOverride = false;
 
+        if (weaponState != WeaponStates.StrikeUp)
+            return hasOverride;
+
         //bare hand
         if (SpecificWeapon == null)
         {
@@ -1913,13 +2232,15 @@ public class FPSWeaponClone : MonoBehaviour
         }
         else
         {
+            if (customWeaponOverrides.ContainsKey(SpecificWeapon.TemplateIndex))
+                return customWeaponOverrides[SpecificWeapon.TemplateIndex].OverrideRecovery;
+
             WeaponTypes weaponType = GameManager.Instance.ItemHelper.ConvertItemToAPIWeaponType(SpecificWeapon);
 
             //if (weaponType != WeaponTypes.Dagger && weaponType != WeaponTypes.Dagger_Magic && weaponType != WeaponTypes.Flail && weaponType != WeaponTypes.Flail_Magic)
             if (weaponType != WeaponTypes.Dagger && weaponType != WeaponTypes.Dagger_Magic)
             {
-                if (weaponState == WeaponStates.StrikeUp)
-                    hasOverride = true;
+                hasOverride = true;
             }
         }
 
@@ -1953,23 +2274,130 @@ public class FPSWeaponClone : MonoBehaviour
         }
     }
 
-    public void PlayAttackVoice(SoundClips customSound = SoundClips.None)
+    public void PlayMoveSound()
+    {
+        if (dfAudioSource)
+        {
+            SoundClips moveSound = SoundClips.None;
+            if (GameManager.Instance.PlayerEffectManager.IsTransformedLycanthrope())
+            {
+                LycanthropyTypes lycanthropyType = GameManager.Instance.PlayerEffectManager.LycanthropyType();
+                if (lycanthropyType == LycanthropyTypes.Werewolf)
+                    moveSound = SoundClips.EnemyWerewolfMove;
+                else if (lycanthropyType == LycanthropyTypes.Wereboar)
+                    moveSound = SoundClips.EnemyWereboarMove;
+            }
+
+            if (moveSound != SoundClips.None)
+                dfAudioSource.PlayOneShot(moveSound, 0, 1f);
+        }
+    }
+    public void PlayAttackSound(SoundClips customSound = SoundClips.None)
     {
         if (dfAudioSource)
         {
             if (customSound == SoundClips.None)
             {
-                PlayerEntity playerEntity = GameManager.Instance.PlayerEntity;
-                SoundClips sound = DaggerfallEntity.GetRaceGenderAttackSound(playerEntity.Race, playerEntity.Gender, true);
+                if (GameManager.Instance.PlayerEffectManager.IsTransformedLycanthrope())
+                {
+                    LycanthropyTypes lycanthropyType = GameManager.Instance.PlayerEffectManager.LycanthropyType();
+                    if (lycanthropyType == LycanthropyTypes.Werewolf)
+                    {
+                        if (UnityEngine.Random.value > 0.5f)
+                            customSound = SoundClips.EnemyWerewolfAttack;
+                        else
+                            customSound = SoundClips.EnemyWerewolfBark;
+                    }
+                    else if (lycanthropyType == LycanthropyTypes.Wereboar)
+                    {
+                        if (UnityEngine.Random.value > 0.5f)
+                            customSound = SoundClips.EnemyWereboarAttack;
+                        else
+                            customSound = SoundClips.EnemyWereboarBark;
+                    }
+                }
+                else
+                {
+                    PlayerEntity playerEntity = GameManager.Instance.PlayerEntity;
+                    customSound = DaggerfallEntity.GetRaceGenderAttackSound(playerEntity.Race, playerEntity.Gender, true);
+                }
+
                 float pitch = dfAudioSource.AudioSource.pitch;
                 dfAudioSource.AudioSource.pitch = pitch + UnityEngine.Random.Range(0, 0.3f);
-                dfAudioSource.PlayOneShot(sound, 0, 1f);
                 dfAudioSource.AudioSource.pitch = pitch;
+                dfAudioSource.PlayOneShot(customSound, 0, 1f);
             }
             else
             {
                 dfAudioSource.PlayOneShot(customSound, 0, 1f);
             }
         }
+    }
+
+    string GetCustomWeaponFilename(DaggerfallUnityItem weapon)
+    {
+        if (weapon == null)
+            return string.Empty;
+
+        if (customWeaponOverrides.ContainsKey(weapon.TemplateIndex))
+        {
+            if (weapon.IsEnchanted && customWeaponOverrides[weapon.TemplateIndex].HasMagicTextures)
+                return customWeaponOverrides[weapon.TemplateIndex].Filename + "_MAGIC";
+            else
+                return customWeaponOverrides[weapon.TemplateIndex].Filename;
+        }
+        else
+            return string.Empty;
+    }
+
+    bool OverrideAlignment()
+    {
+        if (!swingAlignmentOverride)
+            return false;
+
+        if (SpecificWeapon == null)
+            return false;
+
+        if (customWeaponOverrides.ContainsKey(SpecificWeapon.TemplateIndex))
+            return customWeaponOverrides[SpecificWeapon.TemplateIndex].OverrideAlignment;
+
+        if ((weaponState == WeaponStates.StrikeDown || weaponState == WeaponStates.StrikeUp) && !(currentWeaponType == WeaponTypes.Bow || currentWeaponType == WeaponTypes.Melee || currentWeaponType == WeaponTypes.Dagger || currentWeaponType == WeaponTypes.Dagger_Magic || currentWeaponType == WeaponTypes.Warhammer || currentWeaponType == WeaponTypes.Warhammer_Magic))
+            return true;
+
+        return false;
+    }
+
+    bool CheckForMirrorOverride()
+    {
+        if (SpecificWeapon == null)
+            return false;
+
+        if (customWeaponOverrides.ContainsKey(SpecificWeapon.TemplateIndex))
+            return customWeaponOverrides[SpecificWeapon.TemplateIndex].OverrideMirror;
+
+        if (SpecificWeapon.GetItemHands() == ItemHands.Both)
+        {
+            if (mirrorTwoHandedSwords && (currentWeaponType == WeaponTypes.LongBlade || currentWeaponType == WeaponTypes.LongBlade_Magic))
+                return true;
+
+            if (mirrorTwoHandedAxes && (currentWeaponType == WeaponTypes.Battleaxe || currentWeaponType == WeaponTypes.Battleaxe_Magic))
+                return true;
+
+            if (mirrorTwoHandedBlunts && (currentWeaponType == WeaponTypes.Staff || currentWeaponType == WeaponTypes.Staff_Magic || currentWeaponType == WeaponTypes.Warhammer || currentWeaponType == WeaponTypes.Warhammer_Magic || currentWeaponType == WeaponTypes.Flail || currentWeaponType == WeaponTypes.Flail_Magic))
+                return true;
+        }
+
+        return false;
+    }
+
+    bool CheckForOffsetOverride()
+    {
+        if (SpecificWeapon != null && customWeaponOverrides.ContainsKey(SpecificWeapon.TemplateIndex))
+            return customWeaponOverrides[SpecificWeapon.TemplateIndex].OverrideOffset;
+
+        if (currentWeaponType == WeaponTypes.Melee || currentWeaponType == WeaponTypes.Werecreature)
+            return false;
+
+        return true;
     }
 }

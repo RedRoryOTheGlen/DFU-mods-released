@@ -1,0 +1,21 @@
+{
+    "ModTitle": "Die Harder",
+    "ModVersion": "1.0.2",
+    "ModAuthor": "RedRoryOTheGlen",
+    "ContactInfo": "rmufrancisco@gmail.com",
+    "DFUnity_Version": "1.1.1",
+    "ModDescription": "Alternative scenarios for Game Over",
+    "GUID": "f38c27af-07c0-4382-aa9c-f70a03fc2d1c",
+    "Files": [
+        "Assets/Game/Mods/PlayerDefeat/Scripts/PlayerDefeat.cs",
+        "Assets/Game/Mods/PlayerDefeat/modsettings.json",
+        "Assets/Game/Mods/PlayerDefeat/PlayerDefeat.dfmod.json"
+    ],
+    "Dependencies": [
+        {
+            "Name": "vanilla combat event handler",
+            "IsOptional": true,
+            "IsPeer": false
+        }
+    ]
+}

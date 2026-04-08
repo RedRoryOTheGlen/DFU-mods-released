@@ -118,6 +118,8 @@ public class HorseRidingOverhaul : MonoBehaviour
     AudioClip[] audioCamelCollision;
     AudioClip[] audioCamelWinded;
 
+    bool playerVocalization;
+
     float lastCollision;
 
     public int steering;   //0 = default, 1 = mouse steering
@@ -618,6 +620,8 @@ public class HorseRidingOverhaul : MonoBehaviour
 
     private void LoadSettings(ModSettings settings, ModSettingsChange change)
     {
+        widget.Paused = true;
+
         int oldGalloping = galloping;
         int oldFrameCount = widget.sprintFrameCount;
         if (change.HasChanged("Controls"))
@@ -634,15 +638,15 @@ public class HorseRidingOverhaul : MonoBehaviour
         if (change.HasChanged("Handling"))
         {
             galloping = settings.GetValue<int>("Handling", "Galloping");
-            if (galloping == 3)
-                widget.sprintFrameCount = tokenMax;
-            else
-                widget.sprintFrameCount = settings.GetValue<int>("Widget", "SprintStaminaFrames");
             staminaDrainBase = 2-settings.GetValue<float>("Handling", "GallopMaxStamina");
             staminaDrainThrottle = settings.GetValue<float>("Handling", "GallopStaminaDrain")+0.5f;
             tokenDuration = settings.GetValue<float>("Handling", "GallopDuration");
             tokenMax = settings.GetValue<int>("Handling", "MaxGallopTokens");
             tokenCurrent = tokenMax;
+            if (galloping == 3)
+                widget.sprintFrameCount = tokenMax;
+            else
+                widget.sprintFrameCount = settings.GetValue<int>("Widget", "SprintStaminaFrames");
             tokenTime = (float)settings.GetValue<int>("Handling", "GallopTokenCooldown");
             limitYaw = settings.GetValue<bool>("Handling", "LimitYawAngle");
             limitYawAngle = settings.GetValue<int>("Handling", "MaximumYawAngle");
@@ -661,6 +665,7 @@ public class HorseRidingOverhaul : MonoBehaviour
             customAudioVolume = settings.GetValue<float>("CustomAudio", "Volume");
             if (customAudio && ridingAudioSource != null)
                 ridingAudioSource.pitch = 1;
+            playerVocalization = settings.GetValue<bool>("CustomAudio", "PlayerSprintVocalization");
         }
         if (change.HasChanged("Inertia"))
         {
@@ -710,6 +715,8 @@ public class HorseRidingOverhaul : MonoBehaviour
 
         if (change.HasChanged("Widget") || oldGalloping != galloping || oldFrameCount != widget.sprintFrameCount)
             widget.Initialize();
+
+        widget.Paused = false;
     }
 
     void ResetVariables()
@@ -825,6 +832,7 @@ public class HorseRidingOverhaul : MonoBehaviour
                                 Texture2D texture;
                                 DaggerfallWorkshop.Utility.AssetInjection.TextureReplacement.TryImportTexture(camelArchive, record, i, out texture);
                                 ridingTextures[i] = texture;
+                                ridingTextures[i].filterMode = DaggerfallUnity.Instance.MaterialReader.MainFilterMode;
                             }
 
                             ridingTexture = ridingTextures[0];
@@ -837,7 +845,10 @@ public class HorseRidingOverhaul : MonoBehaviour
                         if (textureName != lastTextureName)
                         {
                             for (int i = 0; i < 4; i++)
+                            {
                                 ridingTextures[i] = ImageReader.GetImageData(textureName, 0, i, true, true).texture;
+                                ridingTextures[i].filterMode = DaggerfallUnity.Instance.MaterialReader.MainFilterMode;
+                            }
 
                             ridingTexture = ridingTextures[0];
                             lastTextureName = textureName;
@@ -858,12 +869,15 @@ public class HorseRidingOverhaul : MonoBehaviour
                 {
                     if (customAudio)
                     {
-                        PlayerEntity playerEntity = GameManager.Instance.PlayerEntity;
-                        SoundClips sound = DaggerfallEntity.GetRaceGenderAttackSound(playerEntity.Race, playerEntity.Gender, true);
-                        float pitch = dfAudioSource.AudioSource.pitch;
-                        dfAudioSource.AudioSource.pitch = pitch + UnityEngine.Random.Range(0, 0.3f);
-                        dfAudioSource.PlayOneShot(sound, 1, 0.5f * DaggerfallUnity.Settings.SoundVolume * customAudioVolume);
-                        dfAudioSource.AudioSource.pitch = pitch;
+                        if (playerVocalization)
+                        {
+                            PlayerEntity playerEntity = GameManager.Instance.PlayerEntity;
+                            SoundClips sound = DaggerfallEntity.GetRaceGenderAttackSound(playerEntity.Race, playerEntity.Gender, true);
+                            float pitch = dfAudioSource.AudioSource.pitch;
+                            dfAudioSource.AudioSource.pitch = pitch + UnityEngine.Random.Range(0, 0.3f);
+                            dfAudioSource.PlayOneShot(sound, 1, 0.5f * DaggerfallUnity.Settings.SoundVolume * customAudioVolume);
+                            dfAudioSource.AudioSource.pitch = pitch;
+                        }
                     }
                 }
 

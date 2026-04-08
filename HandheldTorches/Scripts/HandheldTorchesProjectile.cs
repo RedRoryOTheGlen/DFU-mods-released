@@ -66,48 +66,62 @@ public class HandheldTorchesProjectile : MonoBehaviour
             if (Physics.Raycast(ray, out hit, delta.magnitude))
             {
                 DaggerfallEntityBehaviour entityBehaviour = hit.collider.gameObject.GetComponent<DaggerfallEntityBehaviour>();
+                EntityEffectManager manager = null;
 
-                EnemyEntity enemy = null;
-                if (entityBehaviour != null && entityBehaviour != GameManager.Instance.PlayerEntityBehaviour)
+                if (HandheldTorches.Instance.fire)
                 {
-                    if (entityBehaviour.Entity is EnemyEntity)
-                        enemy = entityBehaviour.Entity as EnemyEntity;
+                    if (entityBehaviour != null && entityBehaviour != GameManager.Instance.PlayerEntityBehaviour)
+                    {
+                        manager = entityBehaviour.GetComponent<EntityEffectManager>();
+                        bool ignite = true;
+
+                        EnemyMotor motor = entityBehaviour.GetComponent<EnemyMotor>();
+                        if (motor != null)
+                        {
+                            //igniting a pacified enemy makes all pacified enemies hostile
+                            if (!motor.IsHostile)
+                                GameManager.Instance.MakeEnemiesHostile();
+
+                            motor.MakeEnemyHostileToAttacker(GameManager.Instance.PlayerEntityBehaviour);
+                        }
+
+                        EnemyEntity enemy = null;
+                        if (entityBehaviour.Entity is EnemyEntity)
+                            enemy = entityBehaviour.Entity as EnemyEntity;
+
+                        if (enemy != null)
+                        {
+                            //we hit an enemy, roll to hit
+                            ignite = FormulaHelper.CalculateSuccessfulHit(GameManager.Instance.PlayerEntity, enemy, HandheldTorches.Instance.fireAccuracy, FormulaHelper.CalculateStruckBodyPart());
+                        }
+
+                        if (manager != null && ignite)
+                        {
+                            EffectSettings settings = BaseEntityEffect.DefaultEffectSettings();
+                            settings.ChanceBase = HandheldTorches.Instance.fireChance;
+                            settings.DurationBase = HandheldTorches.Instance.fireDuration;
+                            settings.MagnitudeBaseMin = HandheldTorches.Instance.fireDamageRange.x;
+                            settings.MagnitudeBaseMax = HandheldTorches.Instance.fireDamageRange.y;
+
+                            EntityEffectBundle bundle = manager.CreateSpellBundle(ContinuousDamageHealth.EffectKey, ElementTypes.Fire, settings);
+                            manager.AssignBundle(bundle);
+
+                            if (HandheldTorches.Instance.fireLight && !HandheldTorches.Instance.hasBloodfall)
+                            {
+                                EffectSettings settingsLight = BaseEntityEffect.DefaultEffectSettings();
+                                settingsLight.DurationBase = settings.DurationBase;
+                                EntityEffectBundle bundleLight = manager.CreateSpellBundle(HandheldTorchesEnemyLight.EffectKey, ElementTypes.Magic, settingsLight);
+                                manager.AssignBundle(bundleLight);
+                            }
+
+                            HandheldTorches.Instance.audioSourceOneShot.PlayClipAtPoint((int)DaggerfallWorkshop.SoundClips.Ignite, hit.point, 1);
+                            Destroy(gameObject);
+                            return;
+                        }
+                    }
                 }
 
-                if (HandheldTorches.Instance.fire && enemy != null && FormulaHelper.CalculateSuccessfulHit(GameManager.Instance.PlayerEntity, enemy, HandheldTorches.Instance.fireAccuracy, FormulaHelper.CalculateStruckBodyPart()))
-                {
-                    EnemyMotor motor = enemy.EntityBehaviour.GetComponent<EnemyMotor>();
-                    if (motor != null)
-                    {
-                        if (!motor.IsHostile)
-                            GameManager.Instance.MakeEnemiesHostile();
-
-                        motor.MakeEnemyHostileToAttacker(GameManager.Instance.PlayerEntityBehaviour);
-                    }
-
-                    //we hit an entity and successfully roll for player accuracy
-                    EntityEffectManager manager = enemy.EntityBehaviour.GetComponent<EntityEffectManager>();
-                    EffectSettings settings = BaseEntityEffect.DefaultEffectSettings();
-                    settings.ChanceBase = HandheldTorches.Instance.fireChance;
-                    settings.DurationBase = HandheldTorches.Instance.fireDuration;
-                    settings.MagnitudeBaseMin = HandheldTorches.Instance.fireDamageRange.x;
-                    settings.MagnitudeBaseMax = HandheldTorches.Instance.fireDamageRange.y;
-
-                    EntityEffectBundle bundle = manager.CreateSpellBundle(ContinuousDamageHealth.EffectKey, ElementTypes.Fire, settings);
-                    manager.AssignBundle(bundle);
-
-                    if (HandheldTorches.Instance.fireLight && !HandheldTorches.Instance.hasBloodfall)
-                    {
-                        EffectSettings settingsLight = BaseEntityEffect.DefaultEffectSettings();
-                        settingsLight.DurationBase = settings.DurationBase;
-                        EntityEffectBundle bundleLight = manager.CreateSpellBundle(HandheldTorchesEnemyLight.EffectKey, ElementTypes.Magic, settingsLight);
-                        manager.AssignBundle(bundleLight);
-                    }
-
-                    HandheldTorches.Instance.audioSourceOneShot.PlayClipAtPoint((int)DaggerfallWorkshop.SoundClips.Ignite, hit.point, 1);
-                    Destroy(gameObject);
-                }
-                else if (speedCurrent < speedStart * 0.2f)
+                if (speedCurrent < speedStart * 0.2f)
                 {
                     //torch has lost too much speed and stopped
                     //spawn torch in hit location and destroy own projectile

@@ -9,10 +9,23 @@ public class HorseRidingWidget : MonoBehaviour
 {
     bool initialized;
 
+    bool paused;
+    public bool Paused
+    {
+        get
+        {
+            return paused;
+        }
+        set
+        {
+            paused = value;
+        }
+    }
+
     public bool isEnabled {
         get
         {
-            if ((speed || heading) && initialized)
+            if ((speed || heading || sprint) && initialized && !paused)
                 return true;
             else
                 return false;
@@ -69,7 +82,7 @@ public class HorseRidingWidget : MonoBehaviour
     {
         //initialize speed textures
         speedTextures = new Texture2D[6];
-        int archive = 7620;
+        int archive = 112389;
         int record = 0;
         int frame = 0;
         for (int i = 0; i < 6; i++)
@@ -83,7 +96,7 @@ public class HorseRidingWidget : MonoBehaviour
 
         //initialize heading textures
         headingTextures = new Texture2D[headingFrameCount];
-        archive = 7620;
+        archive = 112389;
         record = 1;
         frame = 0;
         for (int i = 0; i < headingFrameCount; i++)
@@ -97,7 +110,7 @@ public class HorseRidingWidget : MonoBehaviour
 
         //initialize charge textures
         sprintTextures = new Texture2D[sprintFrameCount + 1];
-        archive = 7620;
+        archive = 112389;
         if (HorseRidingOverhaul.Instance.galloping == 3)
             record = 2;
         else

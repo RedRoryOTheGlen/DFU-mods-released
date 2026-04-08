@@ -1,0 +1,22 @@
+{
+    "Version": null,
+    "Sections": [
+        {
+            "Name": "Main",
+            "Description": null,
+            "IsAdvanced": false,
+            "Keys": [
+                {
+                    "Min": 1,
+                    "Max": 10,
+                    "Value": 1,
+                    "Name": "Delay",
+                    "Description": "Time to wait before AI is re-enabled",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.SliderIntKey"
+                }
+            ],
+            "$version": "v1"
+        }
+    ]
+}
