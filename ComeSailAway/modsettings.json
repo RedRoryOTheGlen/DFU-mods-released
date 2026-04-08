@@ -21,6 +21,13 @@
                     "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.TextKey"
                 },
                 {
+                    "Value": "Period",
+                    "Name": "ToggleLight",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.TextKey"
+                },
+                {
                     "Value": "KeypadPlus",
                     "Name": "IncreaseTimeScale",
                     "Description": null,
@@ -61,6 +68,15 @@
                     "Description": null,
                     "$version": "v1",
                     "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.TextKey"
+                },
+                {
+                    "Min": 1,
+                    "Max": 10,
+                    "Value": 3,
+                    "Name": "PortLocationSearchRange",
+                    "Description": "How far from the player's current location a port can be detected",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.SliderIntKey"
                 }
             ],
             "$version": "v1"
@@ -382,6 +398,43 @@
                 {
                     "Value": true,
                     "Name": "AutoStowSquareSails",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
+                    "Value": true,
+                    "Name": "AutoStowGaffSails",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                }
+            ],
+            "$version": "v1"
+        },
+        {
+            "Name": "Compatibility",
+            "Description": null,
+            "IsAdvanced": false,
+            "Keys": [
+                {
+                    "Value": false,
+                    "Name": "AnimatedWaterVertexWaves",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                }
+            ],
+            "$version": "v1"
+        },
+        {
+            "Name": "Debug",
+            "Description": null,
+            "IsAdvanced": false,
+            "Keys": [
+                {
+                    "Value": false,
+                    "Name": "ShowValues",
                     "Description": null,
                     "$version": "v1",
                     "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"

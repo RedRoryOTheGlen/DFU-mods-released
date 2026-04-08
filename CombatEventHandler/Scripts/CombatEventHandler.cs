@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using UnityEngine;
 using DaggerfallWorkshop;
 using DaggerfallWorkshop.Game;
@@ -26,41 +27,78 @@ public class CombatEventHandler : MonoBehaviour
 
     public static CombatEventHandler Instance;
 
-    //VCEH - Attack event
-    //VCEH - Outputs Attacker, Target, Weapon, Body Part and Damage
+    //attacker, target, weapon, body part, damage
     public event Action<DaggerfallEntity, DaggerfallEntity, DaggerfallUnityItem, int, int> OnAttackDamageCalculated;
 
-    //Saving throw event
-    //Outputs effect element, effect flags (Paralysis, etc), Target and Result
+    //element, effect, target, result
     public event Action<DFCareer.Elements, DFCareer.EffectFlags, DaggerfallEntity, int> OnSavingThrow;
+
+    IEnumerator conflict;
 
     void Awake()
     {
         if (Instance == null)
             Instance = this;
 
-        //VCEH - Register the custom formulae
         FormulaHelper.RegisterOverride(mod, "CalculateAttackDamage", (Func<DaggerfallEntity, DaggerfallEntity, bool, int, DaggerfallUnityItem, int>)CalculateAttackDamage);
         FormulaHelper.RegisterOverride(mod, "SavingThrow", (Func<DFCareer.Elements, DFCareer.EffectFlags, DaggerfallEntity, int, int>)SavingThrow);
 
-        //VCEH - Set up the receiver
         mod.MessageReceiver = MessageReceiver;
 
+        ModCompatibilityChecking();
+
         mod.IsReady = true;
+    }
+
+    void ModCompatibilityChecking()
+    {
+        //listen to Eye Of The Beholder for changes in POV
+        Mod pcao = ModManager.Instance.GetModFromGUID("5a0317fc-6006-44f3-b269-09c77398ca70");
+        if (pcao != null)
+        {
+            ShowConflictMessage(pcao.Title);
+        }
+    }
+
+    void ShowConflictMessage(string mod)
+    {
+        if (conflict != null)
+            return;
+
+        conflict = ShowConflictMessageCoroutine(mod);
+        StartCoroutine(conflict);
+    }
+
+    IEnumerator ShowConflictMessageCoroutine(string mod)
+    {
+        while (!GameManager.Instance.IsPlayingGame())
+            yield return new WaitForSeconds(1);
+
+        DaggerfallUI.MessageBox("Mod conflict detected! " + mod + " is installed and combat events may have been overridden!", true);
+
+        yield return new WaitForSeconds(1);
+
+        conflict = null;
     }
 
     void MessageReceiver(string message, object data, DFModMessageCallback callBack)
     {
         switch (message)
         {
-            //VCEH - Add sender to attack event listeners
             case "onAttackDamageCalculated":
                 OnAttackDamageCalculated += data as Action<DaggerfallEntity, DaggerfallEntity, DaggerfallUnityItem, int, int>;
                 break;
 
-            //VCEH - Add sender to saving throw event listeners
             case "onSavingThrow":
                 OnSavingThrow += data as Action<DFCareer.Elements, DFCareer.EffectFlags, DaggerfallEntity, int>;
+                break;
+
+            case "getAttackDamageCalculatedEvent":
+                callBack?.Invoke("getAttackDamageCalculatedEvent", OnAttackDamageCalculated);
+                break;
+
+            case "getSavingThrowEvent":
+                callBack?.Invoke("getSavingThrowEvent", OnSavingThrow);
                 break;
 
             default:
@@ -69,8 +107,15 @@ public class CombatEventHandler : MonoBehaviour
         }
     }
 
-    //VCEH - Default CalculateAttackDamage formula from FormulaHelper
-    //VCEH - Add calls to events before every return
+    /// <summary>
+    /// Calculate the damage caused by an attack.
+    /// </summary>
+    /// <param name="attacker">Attacking entity</param>
+    /// <param name="target">Target entity</param>
+    /// <param name="isEnemyFacingAwayFromPlayer">Whether enemy is facing away from player, used for backstabbing</param>
+    /// <param name="weaponAnimTime">Time the weapon animation lasted before the attack in ms, used for bow drawing </param>
+    /// <param name="weapon">The weapon item being used</param>
+    /// <returns>Damage inflicted to target, can be 0 for a miss or ineffective hit</returns>
     public static int CalculateAttackDamage(DaggerfallEntity attacker, DaggerfallEntity target, bool isEnemyFacingAwayFromPlayer, int weaponAnimTime, DaggerfallUnityItem weapon)
     {
         if (attacker == null || target == null)
@@ -112,10 +157,10 @@ public class CombatEventHandler : MonoBehaviour
                     DaggerfallUI.Instance.PopupMessage(TextManager.Instance.GetLocalizedText("materialIneffective"));
                 }
 
-                //VCEH - Attack event start
                 if (Instance.OnAttackDamageCalculated != null)
+                {
                     Instance.OnAttackDamageCalculated(attacker, target, weapon, 0, -1);
-                //VCEH - Attack event end
+                }
 
                 return 0;
             }
@@ -258,23 +303,20 @@ public class CombatEventHandler : MonoBehaviour
 
         //Debug.LogFormat("Damage {0} applied, animTime={1}  ({2})", damage, weaponAnimTime, GameManager.Instance.WeaponManager.ScreenWeapon.WeaponState);
 
-        //VCEH - Attack event start
-        if (Instance.OnAttackDamageCalculated != null)
-            Instance.OnAttackDamageCalculated(attacker, target, weapon, struckBodyPart, damage);
-        //VCEH - Attack event end
-
         //Damage dealt
+        if (Instance.OnAttackDamageCalculated != null)
+        {
+            Instance.OnAttackDamageCalculated(attacker, target, weapon, struckBodyPart, damage);
+        }
+
         return damage;
     }
 
-    //Added here as a requirement
     public bool IsRingOfNamira(DaggerfallUnityItem item)
     {
         return item != null && item.ContainsEnchantment(DaggerfallConnect.FallExe.EnchantmentTypes.SpecialArtifactEffect, (int)ArtifactsSubTypes.Ring_of_Namira);
     }
 
-    //VCEH - Default SavingThrow formula from FormulaHelper
-    //VCEH - Before the return, pre-calculate the result and call the saving throw event
     public static int SavingThrow(DFCareer.Elements elementType, DFCareer.EffectFlags effectFlags, DaggerfallEntity target, int modifier)
     {
         // Handle resistances granted by magical effects
@@ -368,13 +410,10 @@ public class CombatEventHandler : MonoBehaviour
                 percentDamageOrDuration = 0;
         }
 
-        //VCEH - Pre-calculating the result
         int result = Mathf.Clamp(percentDamageOrDuration, 0, 100);
 
-        //VCEH - Saving throw event start
         if (Instance.OnSavingThrow != null)
             Instance.OnSavingThrow(elementType,effectFlags,target,result);
-        //VCEH - Saving throw event end
 
         return result;
     }

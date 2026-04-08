@@ -40,6 +40,9 @@ namespace ComeSailAwayMod
                 int archive = 0;
                 int record = 0;
 
+                if (transform.childCount < 1)
+                    continue;
+
                 //we have to extract the archive and record from SOMEWHERE
                 //try recording it in the names of the mesh's child objects
                 string childName = transform.GetChild(i).name;
