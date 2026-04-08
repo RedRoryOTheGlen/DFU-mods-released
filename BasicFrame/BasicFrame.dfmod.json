@@ -1,6 +1,6 @@
 {
     "ModTitle": "Basic Frame",
-    "ModVersion": "1.0",
+    "ModVersion": "1.0.1",
     "ModAuthor": "RedRoryOTheGlen",
     "ContactInfo": "rmufrancisco@gmail.com",
     "DFUnity_Version": "1.1.1",
@@ -8,9 +8,9 @@
     "GUID": "b0ef9129-e58e-4aff-a525-9d681dbdfec0",
     "Files": [
         "Assets/Game/Mods/BasicFrame/BasicFrame.dfmod.json",
+        "Assets/Game/Mods/BasicFrame/modsettings.json",
         "Assets/Game/Mods/BasicFrame/Scripts/BasicFrame.cs",
-        "Assets/Game/Mods/BasicFrame/Textures/15000_0-1.png",
-        "Assets/Game/Mods/BasicFrame/Textures/15000_0-0.png",
-        "Assets/Game/Mods/BasicFrame/modsettings.json"
+        "Assets/Game/Mods/BasicFrame/Textures/112388_0-0.png",
+        "Assets/Game/Mods/BasicFrame/Textures/112388_0-1.png"
     ]
 }

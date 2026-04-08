@@ -1,0 +1,75 @@
+{
+    "Version": null,
+    "Sections": [
+        {
+            "Name": "Main",
+            "Description": null,
+            "IsAdvanced": false,
+            "Keys": [
+                {
+                    "Min": 0,
+                    "Max": 100,
+                    "Value": 5,
+                    "Name": "BaseChance",
+                    "Description": "Starting offer chance value",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.SliderIntKey"
+                },
+                {
+                    "Min": 0,
+                    "Max": 100,
+                    "Value": 5,
+                    "Name": "ChanceBonus",
+                    "Description": "Cumulative value added to offer chance after a failed roll",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.SliderIntKey"
+                },
+                {
+                    "Min": 0,
+                    "Max": 10,
+                    "Value": 5,
+                    "Name": "MaximumChanceBonusStacks",
+                    "Description": "Number of times offer chance bonus can stack",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.SliderIntKey"
+                },
+                {
+                    "Options": [
+                        "No Preference",
+                        "Same Gender",
+                        "Opposite Gender",
+                        "Men",
+                        "Women"
+                    ],
+                    "Value": 0,
+                    "Name": "PreferredGender",
+                    "Description": "Optionally weighs quest-givers by gender",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.MultipleChoiceKey"
+                },
+                {
+                    "Value": true,
+                    "Name": "EntryQuestors",
+                    "Description": "Whether questors will offer their quests upon entering a building.",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
+                    "Value": false,
+                    "Name": "ForeignQuestors",
+                    "Description": "EXPERIMENTAL: Allows Questors based in different locations when loitering in taverns.",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
+                    "Value": false,
+                    "Name": "StreetQuestors",
+                    "Description": "EXPERIMENTAL: Allows quest offers to be made when loitering outside buildings in cities",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                }
+            ],
+            "$version": "v1"
+        }
+    ]
+}

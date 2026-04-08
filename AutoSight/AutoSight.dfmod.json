@@ -1,6 +1,6 @@
 {
     "ModTitle": "Auto-Sight",
-    "ModVersion": "1.2.6",
+    "ModVersion": "1.2.7",
     "ModAuthor": "RedRoryOTheGlen",
     "ContactInfo": "rmufrancisco@gmail.com",
     "DFUnity_Version": "1.1.1",
@@ -9,12 +9,12 @@
     "Files": [
         "Assets/Game/Mods/AutoSight/Scripts/AutoSight.cs",
         "Assets/Game/Mods/AutoSight/modsettings.json",
-        "Assets/Game/Mods/AutoSight/Textures/500_0-2.png",
-        "Assets/Game/Mods/AutoSight/Textures/500_0-1.png",
-        "Assets/Game/Mods/AutoSight/Textures/500_0-0.png",
-        "Assets/Game/Mods/AutoSight/Textures/500_0-3.png",
-        "Assets/Game/Mods/AutoSight/Textures/500_0-4.png",
-        "Assets/Game/Mods/AutoSight/AutoSight.dfmod.json"
+        "Assets/Game/Mods/AutoSight/AutoSight.dfmod.json",
+        "Assets/Game/Mods/AutoSight/Textures/112387_0-4.png",
+        "Assets/Game/Mods/AutoSight/Textures/112387_0-1.png",
+        "Assets/Game/Mods/AutoSight/Textures/112387_0-3.png",
+        "Assets/Game/Mods/AutoSight/Textures/112387_0-0.png",
+        "Assets/Game/Mods/AutoSight/Textures/112387_0-2.png"
     ],
     "Dependencies": [
         {

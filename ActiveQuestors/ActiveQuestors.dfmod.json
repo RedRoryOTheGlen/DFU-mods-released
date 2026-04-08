@@ -1,0 +1,13 @@
+{
+    "ModTitle": "Adventure Finds You",
+    "ModVersion": "1.0.2",
+    "ModAuthor": "RedRoryOTheGlen",
+    "ContactInfo": "rmufrancisco@gmail.com",
+    "DFUnity_Version": "1.1.1",
+    "ModDescription": "Let NPCs take the initiative!",
+    "GUID": "e78f2801-3561-463c-8d7b-34b8618b3456",
+    "Files": [
+        "Assets/Game/Mods/ActiveQuestors/modsettings.json",
+        "Assets/Game/Mods/ActiveQuestors/Scripts/ActiveQuestors.cs"
+    ]
+}

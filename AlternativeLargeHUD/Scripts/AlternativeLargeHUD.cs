@@ -60,6 +60,10 @@ namespace AlternativeLargeHUDMod
         Texture2D BackgroundTextureCenter;
         Rect BackgroundRect;
 
+        XMLManager BackgroundXML;
+        Vector2 BackgroundOffset;
+        bool BackgroundStretch;
+
         Texture2D MessageBackgroundTexture;
         float lastBackgroundHeight;
 
@@ -118,6 +122,11 @@ namespace AlternativeLargeHUDMod
         bool messageGradient = false;
         int enemyCondition = 0; //0 = description, 1 = percent, 2 = numbers, 3 = bar
         float textScaleMod = 1;
+        int textShadowDistance = 2;
+        bool healthLoss = true;
+        bool HideWhenPaused = false;
+        bool messageReverse = true;
+        int fullscreenPosition = 0; //0 = bottom center, 1 = top right, 2 = top left
 
         //event
         public bool lastLargeHUD;
@@ -144,29 +153,31 @@ namespace AlternativeLargeHUDMod
             if (change.HasChanged("Main"))
             {
                 depth = settings.GetValue<int>("Main", "RenderDepth");
+                HideWhenPaused = settings.GetValue<bool>("Main", "HideWhenPaused");
                 messageBox = settings.GetValue<int>("Main", "MessageBox");
+                messageReverse = settings.GetValue<bool>("Main", "ReverseMessageDirection");
                 messageGradient = settings.GetValue<bool>("Main", "MessageGradient");
                 messagesMaxCount = settings.GetValue<int>("Main", "MaxMessageCount");
                 messagesMaxLength = settings.GetValue<int>("Main", "MaxMessageLength");
 
+                fullscreenPosition = settings.GetValue<int>("Main", "FullscreenPosition");
+
                 textScaleMod = (float)settings.GetValue<int>("Main", "TextScale")/100f;
+                textShadowDistance = settings.GetValue<int>("Main", "TextShadowDistance");
 
                 int lastEnemyCondition = enemyCondition;
                 enemyCondition = settings.GetValue<int>("Main", "EnemyHealthDisplay");
                 if (enemyCondition != lastEnemyCondition && lastHit != null)
                     UpdateEnemyInfo(true);
+                healthLoss = settings.GetValue<bool>("Main", "EnemyHealthBarLossEffect");
+
+                LoadTextures();
             }
         }
 
-            private void Start()
+        private void Start()
         {
-            TextureReplacement.TryImportTexture(112393, 0, 0, out BackgroundTextureSide);
-            TextureReplacement.TryImportTexture(112393, 0, 1, out BackgroundTextureCenter);
-            TextureReplacement.TryImportTexture(112393, 0, 2, out MessageBackgroundTexture);
-            TextureReplacement.TryImportTexture(112393, 1, 0, out BarTextureSide);
-            TextureReplacement.TryImportTexture(112393, 1, 1, out BarTextureCenter);
-            TextureReplacement.TryImportTexture(112393, 2, 0, out BarBaseTextureSide);
-            TextureReplacement.TryImportTexture(112393, 2, 1, out BarBaseTextureCenter);
+            LoadTextures();
 
             DaggerfallUI.Instance.DaggerfallHUD.LargeHUD.Enabled = false;
 
@@ -177,6 +188,38 @@ namespace AlternativeLargeHUDMod
 
             DaggerfallUI.Instance.DaggerfallHUD.ShowPopupText = false;
             DaggerfallUI.Instance.DaggerfallHUD.ShowMidScreenText = false;
+        }
+
+        void LoadTextures()
+        {
+            if (BackgroundTextureSide == null)
+                TextureReplacement.TryImportTexture(112393, 0, 0, out BackgroundTextureSide);
+            if (BackgroundTextureCenter == null)
+                TextureReplacement.TryImportTexture(112393, 0, 1, out BackgroundTextureCenter);
+            if (MessageBackgroundTexture == null)
+                TextureReplacement.TryImportTexture(112393, 0, 2, out MessageBackgroundTexture);
+            if (BarTextureSide == null)
+                TextureReplacement.TryImportTexture(112393, 1, 0, out BarTextureSide);
+            if (BarTextureCenter == null)
+                TextureReplacement.TryImportTexture(112393, 1, 1, out BarTextureCenter);
+            if (BarBaseTextureSide == null)
+                TextureReplacement.TryImportTexture(112393, 2, 0, out BarBaseTextureSide);
+            if (BarBaseTextureCenter == null)
+                TextureReplacement.TryImportTexture(112393, 2, 1, out BarBaseTextureCenter);
+
+            string backgroundName = "112393_0-0";
+            if (messageBox == 1)
+                backgroundName = "112393_0-1";
+
+            BackgroundOffset = Vector2.zero;
+            if (XMLManager.TryReadXml(TextureReplacement.TexturesPath, backgroundName, out BackgroundXML))
+            {
+                BackgroundOffset = BackgroundXML.GetVector2("X", "Y", Vector2.zero);
+                BackgroundStretch = BackgroundXML.GetBool("stretch", false);
+                Debug.Log("BIG RED HUD - FOUND A BACKGROUND TEXTURE XML");
+            }
+            else
+                Debug.Log("BIG RED HUD - DID NOT FIND A BACKGROUND TEXTURE XML");
         }
 
         public static void OnStartMenu(object sender, EventArgs e)
@@ -373,6 +416,21 @@ namespace AlternativeLargeHUDMod
                 Instance.messages.RemoveAt(Instance.messages.Count - 1);
 
             Instance.messages.Insert(0, str);
+
+            /*if (Instance.messageReverse)
+            {
+                if (Instance.messages.Count >= Instance.messagesMaxCount)
+                    Instance.messages.RemoveAt(0);
+
+                Instance.messages.Add(str);
+            }
+            else
+            {
+                if (Instance.messages.Count >= Instance.messagesMaxCount)
+                    Instance.messages.RemoveAt(Instance.messages.Count - 1);
+
+                Instance.messages.Insert(0, str);
+            }*/
         }
 
         public List<string> WrapTextTooltip(string input, Vector2 scale, int maxLineLength = 35, int alignment = 0)
@@ -405,6 +463,7 @@ namespace AlternativeLargeHUDMod
 
         public List<string> WrapText(string input, Vector2 scale, int maxLineLength = 35, int alignment = 0)
         {
+
             var lines = new List<string>();
 
             if (string.IsNullOrWhiteSpace(input))
@@ -452,7 +511,10 @@ namespace AlternativeLargeHUDMod
             if (consoleController.ui.isConsoleOpen)
                 return;
 
-            GUI.depth = GameManager.Instance.IsPlayingGame() ? depth : 0;
+            if (HideWhenPaused && !GameManager.Instance.IsPlayingGame())
+                return;
+            else
+                GUI.depth = GameManager.Instance.IsPlayingGame() ? depth : 0;
 
             if (DaggerfallUI.Instance.CustomScreenRect != null)
                 screenRect = DaggerfallUI.Instance.CustomScreenRect.Value;
@@ -465,45 +527,48 @@ namespace AlternativeLargeHUDMod
             float backgroundWidth = BackgroundTexture.width * ScaleX;
             float backgroundHeight = BackgroundTexture.height * ScaleY;
 
+            if (BackgroundStretch)
+                backgroundWidth = Screen.width;
+
             int extraLines = 0;
 
             float scale = 0.75f * ScaleY * textScaleMod;
             Vector2 textScale = Vector2.one * scale;
 
-            float messageLength = 40 * (screenRect.width/screenRect.height);
+            float messageLength = messagesMaxLength * (screenRect.width/screenRect.height);
             int maxLengthMessages = Mathf.FloorToInt(messageLength / (textScaleMod * 1.5f));
             int maxLengthInfo = Mathf.FloorToInt(52 / (textScaleMod * 1.5f));
 
             float spaceMessages = 6f * ScaleY * textScaleMod;
             float spaceInfo = 7.5f * ScaleY * textScaleMod;
 
-            if (DaggerfallUnity.Settings.SDFFontRendering)
+            /*if (DaggerfallUnity.Settings.SDFFontRendering)
             {
                 textScale *= 1.25f;
                 maxLengthMessages = Mathf.FloorToInt(maxLengthMessages * 1.4f);
                 spaceMessages *= 1.2f;
                 maxLengthInfo = Mathf.FloorToInt(maxLengthInfo * 1.4f);
                 spaceInfo *= 1.2f;
-            }
+            }*/
 
             if (DaggerfallUnity.Settings.LargeHUD)
             {
                 screenRect.height -= DaggerfallUI.Instance.DaggerfallHUD.LargeHUD.ScreenHeight;
-                backgroundHeight = DaggerfallUI.Instance.DaggerfallHUD.LargeHUD.ScreenHeight;
+                //backgroundHeight = DaggerfallUI.Instance.DaggerfallHUD.LargeHUD.ScreenHeight;
                 lastBackgroundHeight = backgroundHeight;
 
-                BackgroundRect = new Rect(screenRect.x, screenRect.y + screenRect.height, backgroundWidth, backgroundHeight);
+                BackgroundRect = new Rect(screenRect.x + (screenRect.width*0.5f) - (backgroundWidth*0.5f) + (BackgroundOffset.x*ScaleX), screenRect.y + screenRect.height + (BackgroundOffset.y * ScaleY), backgroundWidth, backgroundHeight);
 
                 if (messageBox == 1)
                 {
-                    messagePos = new Vector2(screenRect.x + (screenRect.width * 0.25f) + (screenRect.width * 0.02f), screenRect.y + screenRect.height + (backgroundHeight * 0.15f));
-                    infoPos = new Vector2(screenRect.x + (screenRect.width * 0.018f), screenRect.y + screenRect.height + (backgroundHeight * 0.1f));
+                    messagePos = new Vector2(screenRect.x + (screenRect.width * 0.25f) + (screenRect.width * 0.02f), screenRect.y + screenRect.height + (backgroundHeight * 0.15f) + (BackgroundOffset.y));
+                    infoPos = new Vector2(screenRect.x + (screenRect.width * 0.018f), screenRect.y + screenRect.height + (backgroundHeight * 0.15f) + (BackgroundOffset.y));
                     maxLengthInfo = Mathf.FloorToInt((float)maxLengthInfo / 2);
                 }
                 else
                 {
-                    messagePos = new Vector2(screenRect.x + (screenRect.width * 0.02f), screenRect.y + screenRect.height + (backgroundHeight * 0.15f));
-                    infoPos = new Vector2(screenRect.x + (screenRect.width * 0.5f) + (screenRect.width * 0.025f), screenRect.y + screenRect.height + (backgroundHeight * 0.15f));
+                    messagePos = new Vector2(screenRect.x + (screenRect.width * 0.02f), screenRect.y + screenRect.height + (backgroundHeight * 0.15f) + (BackgroundOffset.y));
+                    infoPos = new Vector2(screenRect.x + (screenRect.width * 0.5f) + (screenRect.width * 0.025f), screenRect.y + screenRect.height + (backgroundHeight * 0.15f) + (BackgroundOffset.y));
                 }
 
                 if (Event.current.type == EventType.Repaint)
@@ -531,21 +596,28 @@ namespace AlternativeLargeHUDMod
 
                             if (messageBox == 1)
                             {
-                                BarBaseRect = new Rect(screenRect.x + (screenRect.width * 0.125f) - (barBaseWidth * 0.5f), screenRect.y + screenRect.height - (barBaseHeight * 0.5f) + (backgroundHeight * 0.8f), barBaseWidth, barBaseHeight);
-                                BarChangeRect = new Rect(screenRect.x + (screenRect.width * 0.125f) - (barWidth * 0.5f), screenRect.y + screenRect.height - (barHeight * 0.5f) + (backgroundHeight * 0.8f), lastBarWidthHealth, barHeight);
-                                BarRect = new Rect(screenRect.x + (screenRect.width * 0.125f) - (barWidth * 0.5f), screenRect.y + screenRect.height - (barHeight * 0.5f) + (backgroundHeight * 0.8f), currentBarWidthHealth, barHeight);
+                                BarBaseRect = new Rect(screenRect.x + (screenRect.width * 0.125f) - (barBaseWidth * 0.5f), screenRect.y + screenRect.height - (barBaseHeight * 0.5f) + (backgroundHeight * 0.8f) + (BackgroundOffset.y * ScaleY), barBaseWidth, barBaseHeight);
+                                BarChangeRect = new Rect(screenRect.x + (screenRect.width * 0.125f) - (barWidth * 0.5f), screenRect.y + screenRect.height - (barHeight * 0.5f) + (backgroundHeight * 0.8f) + (BackgroundOffset.y * ScaleY), lastBarWidthHealth, barHeight);
+                                BarRect = new Rect(screenRect.x + (screenRect.width * 0.125f) - (barWidth * 0.5f), screenRect.y + screenRect.height - (barHeight * 0.5f) + (backgroundHeight * 0.8f) + (BackgroundOffset.y * ScaleY), currentBarWidthHealth, barHeight);
                             }
                             else
                             {
-                                BarBaseRect = new Rect(screenRect.x + (screenRect.width * 0.75f) - (barBaseWidth * 0.5f), screenRect.y + screenRect.height - (barBaseHeight * 0.5f) + (backgroundHeight * 0.725f), barBaseWidth, barBaseHeight);
-                                BarChangeRect = new Rect(screenRect.x + (screenRect.width * 0.75f) - (barWidth * 0.5f), screenRect.y + screenRect.height - (barHeight * 0.5f) + (backgroundHeight * 0.725f), lastBarWidthHealth, barHeight);
-                                BarRect = new Rect(screenRect.x + (screenRect.width * 0.75f) - (barWidth * 0.5f), screenRect.y + screenRect.height - (barHeight * 0.5f) + (backgroundHeight * 0.725f), currentBarWidthHealth, barHeight);
+                                BarBaseRect = new Rect(screenRect.x + (screenRect.width * 0.75f) - (barBaseWidth * 0.5f), screenRect.y + screenRect.height - (barBaseHeight * 0.5f) + (backgroundHeight * 0.8f) + (BackgroundOffset.y * ScaleY), barBaseWidth, barBaseHeight);
+                                BarChangeRect = new Rect(screenRect.x + (screenRect.width * 0.75f) - (barWidth * 0.5f), screenRect.y + screenRect.height - (barHeight * 0.5f) + (backgroundHeight * 0.8f) + (BackgroundOffset.y * ScaleY), lastBarWidthHealth, barHeight);
+                                BarRect = new Rect(screenRect.x + (screenRect.width * 0.75f) - (barWidth * 0.5f), screenRect.y + screenRect.height - (barHeight * 0.5f) + (backgroundHeight * 0.8f) + (BackgroundOffset.y * ScaleY), currentBarWidthHealth, barHeight);
                             }
 
 
                             DaggerfallUI.DrawTexture(BarBaseRect, BarBaseTexture, ScaleMode.StretchToFill, true, Color.white);
-                            DaggerfallUI.DrawTexture(BarChangeRect, BarTexture, ScaleMode.StretchToFill, true, lastBarWidthColor);
-                            DaggerfallUI.DrawTexture(BarRect, BarTexture, ScaleMode.StretchToFill, true, Color.white);
+
+                            if (healthLoss)
+                            {
+                                Rect BarChangeRectDst = new Rect(0, 0, lastBarWidthHealth / barWidth, 1);
+                                DaggerfallUI.DrawTextureWithTexCoords(BarChangeRect, BarTexture, BarChangeRectDst, true, lastBarWidthColor);
+                            }
+
+                            Rect BarRectDst = new Rect(0, 0, currentBarWidthHealth / barWidth, 1);
+                            DaggerfallUI.DrawTextureWithTexCoords(BarRect, BarTexture, BarRectDst, true, Color.white);
                         }
                     }
 
@@ -555,7 +627,7 @@ namespace AlternativeLargeHUDMod
                         List<string> lines = WrapTextTooltip(info, textScale, maxLengthInfo, 1);
                         for (int i = 0; i < lines.Count; i++)
                         {
-                            DaggerfallUI.DefaultFont.DrawText(lines[i], infoPos + (Vector2.up * (i * spaceInfo)), textScale, DaggerfallUI.DaggerfallDefaultTextColor, DaggerfallUI.DaggerfallDefaultShadowColor, Vector2.one);
+                            DaggerfallUI.DefaultFont.DrawText(lines[i], infoPos + (Vector2.up * (i * spaceInfo)), textScale, DaggerfallUI.DaggerfallDefaultTextColor, DaggerfallUI.DaggerfallDefaultShadowColor, Vector2.one * textShadowDistance);
                         }
                     }
                 }
@@ -569,8 +641,21 @@ namespace AlternativeLargeHUDMod
                 else
                     backgroundHeight = MessageBackgroundTexture.height * ScaleY;
 
-                BackgroundRect = new Rect(screenRect.x + (screenRect.width * 0.5f) - (backgroundWidth * 0.5f), screenRect.y + screenRect.height - backgroundHeight, backgroundWidth, backgroundHeight);
-                messagePos = new Vector2(screenRect.x + (screenRect.width * 0.25f) + (screenRect.width * 0.02f), screenRect.y + screenRect.height - backgroundHeight + (backgroundHeight * 0.15f));
+                if (fullscreenPosition == 2)
+                {
+                    BackgroundRect = new Rect(screenRect.x + screenRect.width - backgroundWidth, screenRect.y + backgroundHeight, backgroundWidth, -backgroundHeight);
+                    messagePos = new Vector2(screenRect.x + screenRect.width - backgroundWidth + (screenRect.width * 0.02f), screenRect.y + (backgroundHeight * 0.05f));
+                }
+                else if (fullscreenPosition == 1)
+                {
+                    BackgroundRect = new Rect(screenRect.x, screenRect.y + backgroundHeight, backgroundWidth, -backgroundHeight);
+                    messagePos = new Vector2(screenRect.x + (screenRect.width * 0.02f), screenRect.y + (backgroundHeight * 0.05f));
+                }
+                else
+                {
+                    BackgroundRect = new Rect(screenRect.x + (screenRect.width * 0.5f) - (backgroundWidth * 0.5f), screenRect.y + screenRect.height - backgroundHeight, backgroundWidth, backgroundHeight);
+                    messagePos = new Vector2(screenRect.x + (screenRect.width * 0.25f) + (screenRect.width * 0.02f), screenRect.y + screenRect.height - backgroundHeight + (backgroundHeight * 0.15f));
+                }
 
                 if (Event.current.type == EventType.Repaint)
                 {
@@ -580,24 +665,23 @@ namespace AlternativeLargeHUDMod
 
             //Draw Messages
             int currentLines = 0;
+            List<List<string>> allLines = new List<List<string>>();
             for (int i = 0; i < messages.Count; i++)
             {
-                List<string> lines = WrapText(messages[i], textScale, maxLengthMessages);
+                allLines.Add(WrapText(messages[i], textScale, maxLengthMessages));
 
-                Color messageColor = DaggerfallUI.DaggerfallDefaultShadowColor;
-                Color messageColorShadow = Color.black;
-
+                /*Color messageColor = DaggerfallUI.DaggerfallDefaultTextColor;
+                Color messageColorShadow = DaggerfallUI.DaggerfallDefaultShadowColor;
                 if (messageGradient)
                 {
-                    messageColor = i == 0 ? DaggerfallUI.DaggerfallDefaultTextColor : DaggerfallUI.DaggerfallDefaultShadowColor;
-                    messageColorShadow = i == 0 ? DaggerfallUI.DaggerfallDefaultShadowColor : Color.black;
+                    messageColor = i == 0 ? DaggerfallUI.DaggerfallDefaultTextColor : DaggerfallUI.DaggerfallDefaultTextColor*0.25f;
 
                     if (i != 0)
                     {
-                        Color messageColorEnd = messageColor * 2;
-                        Color messageColorShadowEnd = messageColor * 2;
+                        Color messageColorEnd = DaggerfallUI.DaggerfallDefaultTextColor;
+                        //Color messageColorShadowEnd = messageColor * 2;
                         messageColor = Color.Lerp(messageColor, messageColorEnd, ((float)i - 1) / (float)messagesMaxCount);
-                        messageColorShadow = Color.Lerp(messageColorShadow, messageColorShadowEnd, ((float)i - 1) / (float)messagesMaxCount);
+                        //messageColorShadow = Color.Lerp(messageColorShadow, messageColorShadowEnd, ((float)i - 1) / (float)messagesMaxCount);
                     }
                 }
 
@@ -608,10 +692,61 @@ namespace AlternativeLargeHUDMod
                         if (currentLines >= messagesMaxCount)
                             break;
 
-                        DaggerfallUI.DefaultFont.DrawText(lines[line], messagePos + (Vector2.up * ((i + line + extraLines) * spaceMessages)), textScale, messageColor, messageColorShadow, Vector2.one);
+                        DaggerfallUI.DefaultFont.DrawText(lines[line], messagePos + (Vector2.up * ((i + line + extraLines) * spaceMessages)), textScale, messageColor, messageColorShadow, Vector2.one * textShadowDistance);
                         currentLines++;
                     }
                     extraLines += lines.Count - 1;
+                }*/
+            }
+
+            if (allLines.Count > 0)
+            {
+                if (Event.current.type == EventType.Repaint)
+                {
+                    for (int i = 0; i < allLines.Count; i++)
+                    {
+
+                        Color messageColor = DaggerfallUI.DaggerfallDefaultTextColor;
+                        Color messageColorShadow = DaggerfallUI.DaggerfallDefaultShadowColor;
+
+                        if (messageGradient)
+                        {
+                            messageColor = i == 0 ? DaggerfallUI.DaggerfallDefaultTextColor : DaggerfallUI.DaggerfallDefaultTextColor * 0.25f;
+
+                            if (i != 0)
+                            {
+                                Color messageColorEnd = DaggerfallUI.DaggerfallDefaultTextColor;
+                                messageColor = Color.Lerp(messageColor, messageColorEnd, ((float)i - 1) / (float)messagesMaxCount);
+                            }
+                        }
+
+
+                        if (messageReverse)
+                        {
+                            for (int ii = allLines[i].Count-1; ii > -1; ii--)
+                            {
+                                if (currentLines >= messagesMaxCount)
+                                    break;
+
+                                DaggerfallUI.DefaultFont.DrawText(allLines[i][ii], messagePos + (Vector2.up * (messagesMaxCount - (allLines[i].Count-ii) - i - extraLines) * spaceMessages), textScale, messageColor, messageColorShadow, Vector2.one * textShadowDistance);
+
+                                currentLines++;
+                            }
+                        }
+                        else
+                        {
+                            for (int ii = 0; ii < allLines[i].Count; ii++)
+                            {
+                                if (currentLines >= messagesMaxCount)
+                                    break;
+
+                                DaggerfallUI.DefaultFont.DrawText(allLines[i][ii], messagePos + (Vector2.up * ((i + ii + extraLines) * spaceMessages)), textScale, messageColor, messageColorShadow, Vector2.one * textShadowDistance);
+
+                                currentLines++;
+                            }
+                        }
+                        extraLines += allLines[i].Count - 1;
+                    }
                 }
             }
 

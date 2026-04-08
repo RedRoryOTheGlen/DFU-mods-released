@@ -112,11 +112,14 @@ public class AutoSight : MonoBehaviour
         mod.LoadSettingsCallback = LoadSettings;
         mod.LoadSettings();
 
-        ModCompatibilityChecking();
-
         InitializeTextures();
 
         mod.IsReady = true;
+    }
+
+    private void Start()
+    {
+        ModCompatibilityChecking();
     }
 
     private void LoadSettings(ModSettings settings, ModSettingsChange change)
@@ -187,7 +190,7 @@ public class AutoSight : MonoBehaviour
     void InitializeTextures()
     {
         eyeTextures = new Texture2D[5];
-        int archive = 500;
+        int archive = 112387;
         int record = 0;
         int frame = 0;
         for (int i = 0; i < 5; i++)
