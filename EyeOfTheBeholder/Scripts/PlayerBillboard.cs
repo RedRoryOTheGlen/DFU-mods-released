@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using DaggerfallWorkshop;
 using DaggerfallWorkshop.Utility;
+using DaggerfallWorkshop.Utility.AssetInjection;
 using DaggerfallWorkshop.Game;
 using DaggerfallWorkshop.Game.Formulas;
 using DaggerfallWorkshop.Game.Serialization;
@@ -30,6 +31,8 @@ public class PlayerBillboard : MonoBehaviour
 
     const int numberOrientations = 8;
     const float anglePerOrientation = 360f / numberOrientations;
+
+    bool isTravelling;
 
     float sizeMod
     {
@@ -81,59 +84,30 @@ public class PlayerBillboard : MonoBehaviour
     public PlayerBillboardState[] stateLast;
 
     PlayerBillboardState[] StatesIdle;
-    PlayerBillboardState[] StatesReadyMelee;
-    PlayerBillboardState[] StatesReadyRanged;
-    PlayerBillboardState[] StatesReadySpell;
     PlayerBillboardState[] StatesMove;
-    PlayerBillboardState[] StatesMoveMelee;
-    PlayerBillboardState[] StatesMoveRanged;
-    PlayerBillboardState[] StatesMoveSpell;
-    PlayerBillboardState[] StatesAttackMelee;
-    PlayerBillboardState[] StatesAttackRanged;
-    PlayerBillboardState[] StatesAttackSpell;
     PlayerBillboardState[] StatesDeath;
+    PlayerBillboardState[] StatesIdleMelee;
+    PlayerBillboardState[] StatesMoveMelee;
+    PlayerBillboardState[] StatesAttackMelee;
+    PlayerBillboardState[] StatesIdleRanged;
+    PlayerBillboardState[] StatesMoveRanged;
+    PlayerBillboardState[] StatesAttackRanged;
+    PlayerBillboardState[] StatesIdleSpell;
+    PlayerBillboardState[] StatesMoveSpell;
+    PlayerBillboardState[] StatesAttackSpell;
 
     PlayerBillboardState[] StatesIdleHorse;
     PlayerBillboardState[] StatesMoveHorse;
+    PlayerBillboardState[] StatesGallopHorse;
 
     PlayerBillboardState[] StatesIdleLycan;
-    PlayerBillboardState[] StatesReadyLycan;
     PlayerBillboardState[] StatesMoveLycan;
-    PlayerBillboardState[] StatesAttackLycan;
+    PlayerBillboardState[] StatesIdleMeleeLycan;
+    PlayerBillboardState[] StatesMoveMeleeLycan;
+    PlayerBillboardState[] StatesAttackMeleeLycan;
     PlayerBillboardState[] StatesDeathLycan;
 
     public bool lengthsChanged = false;
-    public int StatesIdleLength = 1;
-    public Vector2 StatesIdleOffset = -Vector2.one;
-    public int StatesReadyMeleeLength = 1;
-    public int StatesReadyRangedLength = 1;
-    public int StatesReadySpellLength = 1;
-    public int StatesMoveLength = 4;
-    public Vector2 StatesMoveOffset = -Vector2.one;
-    public int StatesMoveMeleeLength = 2;
-    public int StatesMoveRangedLength = 2;
-    public int StatesMoveSpellLength = 2;
-    public int StatesAttackMeleeLength = 6;
-    public Vector2 StatesAttackMeleeOffset = -Vector2.one;
-    public int StatesAttackRangedLength = 4;
-    public Vector2 StatesAttackRangedOffset = -Vector2.one;
-    public int StatesAttackSpellLength = 4;
-    public Vector2 StatesAttackSpellOffset = -Vector2.one;
-    public int StatesDeathLength = 2;
-    public Vector2 StatesDeathOffset = -Vector2.one;
-    public int StatesIdleHorseLength = 1;
-    public Vector2 StatesIdleHorseOffset = -Vector2.one;
-    public int StatesMoveHorseLength = 8;
-    public Vector2 StatesMoveHorseOffset = -Vector2.one;
-    public int StatesIdleLycanLength = 1;
-    public Vector2 StatesIdleLycanOffset = -Vector2.one;
-    public int StatesReadyLycanLength = 1;
-    public int StatesMoveLycanLength = 4;
-    public Vector2 StatesMoveLycanOffset = -Vector2.one;
-    public int StatesAttackLycanLength = 3;
-    public Vector2 StatesAttackLycanOffset = -Vector2.one;
-    public int StatesDeathLycanLength = 2;
-    public Vector2 StatesDeathLycanOffset = -Vector2.one;
 
     IEnumerator isAnimating;
     bool died;
@@ -169,6 +143,7 @@ public class PlayerBillboard : MonoBehaviour
     int mirrorCount = 0;
 
     public bool FP;
+    public int visibility;
     public int torchOffset;
     public float walkAnimSpeedMod;
 
@@ -180,65 +155,67 @@ public class PlayerBillboard : MonoBehaviour
     bool footstepAlt;
 
     bool hasPlayedFootstep;
+    bool wasGrounded;
 
     public class PlayerBillboardState
     {
         public string name;
-        public int length;
-        public Texture2D[] frames;
-        public Vector2 offset;
-        public bool flipped;
+        public List<Texture2D> frames = new List<Texture2D>();
+        public bool mirror;
+        public Rect rect;
 
-        public PlayerBillboardState (string newName, int newLength, int archive, int record, int frame , Vector2 newOffset, bool newFlipped)
+        XMLManager xml;
+
+        public PlayerBillboardState(string newName, int archive, int record, int frame, bool newMirror = false)
         {
             name = newName;
-            length = newLength;
-            offset = newOffset;
-            flipped = newFlipped;
+            mirror = newMirror;
 
-            InitializeTextures(archive,record,frame);
+            InitializeTextures(archive,record);
 
-            Debug.Log("PlayerBillboardState " + name + " was initialized with " + frames.Length + " frames");
+            Debug.Log("PlayerBillboardState " + name + " was initialized with " + frames.Count + " frames");
         }
 
-        public Rect GetRect(int frame, bool flip)
+        void InitializeTextures(int archive, int record)
         {
-            if (flip)
-                return new Rect(-offset.x, offset.y, frames[frame].width, frames[frame].height);
-            else
-                return new Rect(offset.x, offset.y, frames[frame].width, frames[frame].height);
-        }
-
-        void InitializeTextures(int archive, int record, int frame)
-        {
-            frames = new Texture2D[length];
-            int current = frame;
-            bool reverse = false;
-            for (int i = 0; i < length; i++)
+            //find all frames of the record
+            int current = 0;
+            Texture2D texture;
+            while (TextureReplacement.TryImportTexture(archive, record, current, out texture))
             {
-                Texture2D texture;
-                if (DaggerfallWorkshop.Utility.AssetInjection.TextureReplacement.TryImportTexture(archive, record, current, out texture))
-                {
-                    frames[i] = texture;
-                    //current++;
+                texture.name = archive.ToString() + "_" + record.ToString() + "-" + current.ToString();
+                texture.wrapMode = TextureWrapMode.Clamp;
+                frames.Add(texture);
+                current++;
+            }
 
-                    if (reverse)
-                        current--;
-                    else
-                        current++;
-                } else
+            //check for XML of first frame, otherwise get rect from dimensions of first frame
+            if (frames.Count > 0)
+            {
+                if (XMLManager.TryReadXml(TextureReplacement.TexturesPath, frames[0].name, out xml))
                 {
-                    /*length = i;
-                    break;*/
+                    float scale = 1;
+                    xml.TryGetFloat("scale", out scale);
 
-                    Debug.Log(name + " - No texture in frame! Reversing!");
-                    reverse = !reverse;
-                    if (reverse)
-                        current--;
+                    Vector2 offset = xml.GetVector2("X", "Y", Vector2.zero);
+
+                    rect = new Rect(offset.x / scale, offset.y / scale, frames[0].width / scale, frames[0].height / scale);
+
+                    /*if (mirror)
+                        rect = new Rect(-offset.x / scale, offset.y / scale, frames[0].width / scale, frames[0].height / scale);
                     else
-                        current++;
-                    i -= 2;
+                        rect = new Rect(offset.x / scale, offset.y / scale, frames[0].width / scale, frames[0].height / scale);*/
                 }
+                else
+                {
+                    Debug.Log("No XML found in " + TextureReplacement.TexturesPath.ToString() + " - " + frames[0].name + "!");
+                    rect = new Rect(0, 0, frames[0].width, frames[0].height);
+                }
+            }
+            else
+            {
+                Debug.Log("No frames found!");
+                rect = new Rect(0, 0, 128, 128);
             }
         }
     }
@@ -264,205 +241,225 @@ public class PlayerBillboard : MonoBehaviour
         if (GameManager.Instance.PlayerEffectManager.LycanthropyType() == LycanthropyTypes.Wereboar)
             indexLycan = 1;
 
-        int archiveFoot = 3800 + indexFoot;
-        int archiveHorse = 3900 + indexHorse;
-        int archiveLycan = 3816 + indexLycan;
+        int archiveFoot = 112364 + indexFoot;
+        int archiveHorse = 112382 + indexHorse;
+        int archiveLycan = 112380 + indexLycan;
 
         StatesIdle = new PlayerBillboardState[numberOrientations];
-        StatesIdle[0] = new PlayerBillboardState("IdleForward", StatesIdleLength, archiveFoot, 15, 0, StatesIdleOffset*scaleOffset, false);
-        StatesIdle[1] = new PlayerBillboardState("IdleForwardLeft", StatesIdleLength, archiveFoot, 16, 0, StatesIdleOffset*scaleOffset, true);
-        StatesIdle[2] = new PlayerBillboardState("IdleLeft", StatesIdleLength, archiveFoot, 17, 0, StatesIdleOffset*scaleOffset, true);
-        StatesIdle[3] = new PlayerBillboardState("IdleBackwardLeft", StatesIdleLength, archiveFoot, 18, 0, StatesIdleOffset*scaleOffset, true);
-        StatesIdle[4] = new PlayerBillboardState("IdleBackward", StatesIdleLength, archiveFoot, 19, 0, StatesIdleOffset*scaleOffset, false);
-        StatesIdle[5] = new PlayerBillboardState("IdleBackwardRight", StatesIdleLength, archiveFoot, 18, 0, StatesIdleOffset*scaleOffset, false);
-        StatesIdle[6] = new PlayerBillboardState("IdleRight", StatesIdleLength, archiveFoot, 17, 0, StatesIdleOffset*scaleOffset, false);
-        StatesIdle[7] = new PlayerBillboardState("IdleForwardRight", StatesIdleLength, archiveFoot, 16, 0, StatesIdleOffset*scaleOffset, false);
-
-        StatesReadyMelee = new PlayerBillboardState[numberOrientations];
-        StatesReadyMelee[0] = new PlayerBillboardState("ReadyMeleeForward", StatesReadyMeleeLength, archiveFoot, 5, 0, StatesAttackMeleeOffset*scaleOffset, false);
-        StatesReadyMelee[1] = new PlayerBillboardState("ReadyMeleeForwardLeft", StatesReadyMeleeLength, archiveFoot, 6, 0, StatesAttackMeleeOffset*scaleOffset, true);
-        StatesReadyMelee[2] = new PlayerBillboardState("ReadyMeleeLeft", StatesReadyMeleeLength, archiveFoot, 7, 0, StatesAttackMeleeOffset*scaleOffset, true);
-        StatesReadyMelee[3] = new PlayerBillboardState("ReadyMeleeBackwardLeft", StatesReadyMeleeLength, archiveFoot, 8, 0, StatesAttackMeleeOffset*scaleOffset, true);
-        StatesReadyMelee[4] = new PlayerBillboardState("ReadyMeleeBackward", StatesReadyMeleeLength, archiveFoot, 9, 0, StatesAttackMeleeOffset*scaleOffset, false);
-        StatesReadyMelee[5] = new PlayerBillboardState("ReadyMeleeBackwardRight", StatesReadyMeleeLength, archiveFoot, 8, 0, StatesAttackMeleeOffset*scaleOffset, false);
-        StatesReadyMelee[6] = new PlayerBillboardState("ReadyMeleeRight", StatesReadyMeleeLength, archiveFoot, 7, 0, StatesAttackMeleeOffset*scaleOffset, false);
-        StatesReadyMelee[7] = new PlayerBillboardState("ReadyMeleeForwardRight", StatesReadyMeleeLength, archiveFoot, 6, 0, StatesAttackMeleeOffset*scaleOffset, false);
-
-        StatesReadyRanged = new PlayerBillboardState[numberOrientations];
-        StatesReadyRanged[0] = new PlayerBillboardState("ReadyRangedForward", StatesReadyRangedLength, archiveFoot, 25, 3, StatesAttackRangedOffset*scaleOffset, false);
-        StatesReadyRanged[1] = new PlayerBillboardState("ReadyRangedForwardLeft", StatesReadyRangedLength, archiveFoot, 26, 3, StatesAttackRangedOffset*scaleOffset, true);
-        StatesReadyRanged[2] = new PlayerBillboardState("ReadyRangedLeft", StatesReadyRangedLength, archiveFoot, 27, 3, StatesAttackRangedOffset*scaleOffset, true);
-        StatesReadyRanged[3] = new PlayerBillboardState("ReadyRangedBackwardLeft", StatesReadyRangedLength, archiveFoot, 28, 3, StatesAttackRangedOffset*scaleOffset, true);
-        StatesReadyRanged[4] = new PlayerBillboardState("ReadyRangedBackward", StatesReadyRangedLength, archiveFoot, 29, 3, StatesAttackRangedOffset*scaleOffset, false);
-        StatesReadyRanged[5] = new PlayerBillboardState("ReadyRangedBackwardRight", StatesReadyRangedLength, archiveFoot, 28, 3, StatesAttackRangedOffset*scaleOffset, false);
-        StatesReadyRanged[6] = new PlayerBillboardState("ReadyRangedRight", StatesReadyRangedLength, archiveFoot, 27, 3, StatesAttackRangedOffset*scaleOffset, false);
-        StatesReadyRanged[7] = new PlayerBillboardState("ReadyRangedForwardRight", StatesReadyRangedLength, archiveFoot, 26, 3, StatesAttackRangedOffset*scaleOffset, false);
-
-        StatesReadySpell = new PlayerBillboardState[numberOrientations];
-        StatesReadySpell[0] = new PlayerBillboardState("ReadySpellForward", StatesReadySpellLength, archiveFoot, 20, 0, StatesAttackSpellOffset*scaleOffset, false);
-        StatesReadySpell[1] = new PlayerBillboardState("ReadySpellForwardLeft", StatesReadySpellLength, archiveFoot, 21, 0, StatesAttackSpellOffset*scaleOffset, true);
-        StatesReadySpell[2] = new PlayerBillboardState("ReadySpellLeft", StatesReadySpellLength, archiveFoot, 22, 0, StatesAttackSpellOffset*scaleOffset, true);
-        StatesReadySpell[3] = new PlayerBillboardState("ReadySpellBackwardLeft", StatesReadySpellLength, archiveFoot, 23, 0, StatesAttackSpellOffset*scaleOffset, true);
-        StatesReadySpell[4] = new PlayerBillboardState("ReadySpellBackward", StatesReadySpellLength, archiveFoot, 24, 0, StatesAttackSpellOffset*scaleOffset, false);
-        StatesReadySpell[5] = new PlayerBillboardState("ReadySpellBackwardRight", StatesReadySpellLength, archiveFoot, 23, 0, StatesAttackSpellOffset*scaleOffset, false);
-        StatesReadySpell[6] = new PlayerBillboardState("ReadySpellRight", StatesReadySpellLength, archiveFoot, 22, 0, StatesAttackSpellOffset*scaleOffset, false);
-        StatesReadySpell[7] = new PlayerBillboardState("ReadySpellForwardRight", StatesReadySpellLength, archiveFoot, 21, 0, StatesAttackSpellOffset*scaleOffset, false);
+        StatesIdle[0] = new PlayerBillboardState("IdleForward", archiveFoot, 0, 0, false);
+        StatesIdle[1] = new PlayerBillboardState("IdleForwardLeft", archiveFoot, 1, 0, true);
+        StatesIdle[2] = new PlayerBillboardState("IdleLeft", archiveFoot, 2, 0, true);
+        StatesIdle[3] = new PlayerBillboardState("IdleBackwardLeft", archiveFoot, 3, 0, true);
+        StatesIdle[4] = new PlayerBillboardState("IdleBackward", archiveFoot, 4, 0, false);
+        StatesIdle[5] = new PlayerBillboardState("IdleBackwardRight", archiveFoot, 3, 0, false);
+        StatesIdle[6] = new PlayerBillboardState("IdleRight", archiveFoot, 2, 0, false);
+        StatesIdle[7] = new PlayerBillboardState("IdleForwardRight", archiveFoot, 1, 0, false);
 
         StatesMove = new PlayerBillboardState[numberOrientations];
-        StatesMove[0] = new PlayerBillboardState("MoveForward", StatesMoveLength, archiveFoot, 0, 0, StatesMoveOffset*scaleOffset, false);
-        StatesMove[1] = new PlayerBillboardState("MoveForwardLeft", StatesMoveLength, archiveFoot, 1, 0, StatesMoveOffset*scaleOffset, true);
-        StatesMove[2] = new PlayerBillboardState("MoveLeft", StatesMoveLength, archiveFoot, 2, 0, StatesMoveOffset*scaleOffset, true);
-        StatesMove[3] = new PlayerBillboardState("MoveBackwardLeft", StatesMoveLength, archiveFoot, 3, 0, StatesMoveOffset*scaleOffset, true);
-        StatesMove[4] = new PlayerBillboardState("MoveBackward", StatesMoveLength, archiveFoot, 4, 0, StatesMoveOffset*scaleOffset, false);
-        StatesMove[5] = new PlayerBillboardState("MoveBackwardRight", StatesMoveLength, archiveFoot, 3, 0, StatesMoveOffset*scaleOffset, false);
-        StatesMove[6] = new PlayerBillboardState("MoveRight", StatesMoveLength, archiveFoot, 2, 0, StatesMoveOffset*scaleOffset, false);
-        StatesMove[7] = new PlayerBillboardState("MoveForwardRight", StatesMoveLength, archiveFoot, 1, 0, StatesMoveOffset*scaleOffset, false);
-
-        StatesMoveMelee = new PlayerBillboardState[numberOrientations];
-        StatesMoveMelee[0] = new PlayerBillboardState("MoveMeleeForward", StatesMoveMeleeLength, archiveFoot, 5, 0, StatesAttackMeleeOffset*scaleOffset, false);
-        StatesMoveMelee[1] = new PlayerBillboardState("MoveMeleeForwardLeft", StatesMoveMeleeLength, archiveFoot, 6, 0, StatesAttackMeleeOffset*scaleOffset, true);
-        StatesMoveMelee[2] = new PlayerBillboardState("MoveMeleeLeft", StatesMoveMeleeLength, archiveFoot, 7, 0, StatesAttackMeleeOffset*scaleOffset, true);
-        StatesMoveMelee[3] = new PlayerBillboardState("MoveMeleeBackwardLeft", StatesMoveMeleeLength, archiveFoot, 8, 0, StatesAttackMeleeOffset*scaleOffset, true);
-        StatesMoveMelee[4] = new PlayerBillboardState("MoveMeleeBackward", StatesMoveMeleeLength, archiveFoot, 9, 0, StatesAttackMeleeOffset*scaleOffset, false);
-        StatesMoveMelee[5] = new PlayerBillboardState("MoveMeleeBackwardRight", StatesMoveMeleeLength, archiveFoot, 8, 0, StatesAttackMeleeOffset*scaleOffset, false);
-        StatesMoveMelee[6] = new PlayerBillboardState("MoveMeleeRight", StatesMoveMeleeLength, archiveFoot, 7, 0, StatesAttackMeleeOffset*scaleOffset, false);
-        StatesMoveMelee[7] = new PlayerBillboardState("MoveMeleeForwardRight", StatesMoveMeleeLength, archiveFoot, 6, 0, StatesAttackMeleeOffset*scaleOffset, false);
-
-        StatesMoveRanged = new PlayerBillboardState[numberOrientations];
-        StatesMoveRanged[0] = new PlayerBillboardState("MoveRangedForward", StatesMoveRangedLength, archiveFoot, 25, 3, StatesAttackRangedOffset*scaleOffset, false);
-        StatesMoveRanged[1] = new PlayerBillboardState("MoveRangedForwardLeft", StatesMoveRangedLength, archiveFoot, 26, 3, StatesAttackRangedOffset*scaleOffset, true);
-        StatesMoveRanged[2] = new PlayerBillboardState("MoveRangedLeft", StatesMoveRangedLength, archiveFoot, 27, 3, StatesAttackRangedOffset*scaleOffset, true);
-        StatesMoveRanged[3] = new PlayerBillboardState("MoveRangedBackwardLeft", StatesMoveRangedLength, archiveFoot, 28, 3, StatesAttackRangedOffset*scaleOffset, true);
-        StatesMoveRanged[4] = new PlayerBillboardState("MoveRangedBackward", StatesMoveRangedLength, archiveFoot, 29, 3, StatesAttackRangedOffset*scaleOffset, false);
-        StatesMoveRanged[5] = new PlayerBillboardState("MoveRangedBackwardRight", StatesMoveRangedLength, archiveFoot, 28, 3, StatesAttackRangedOffset*scaleOffset, false);
-        StatesMoveRanged[6] = new PlayerBillboardState("MoveRangedRight", StatesMoveRangedLength, archiveFoot, 27, 3, StatesAttackRangedOffset*scaleOffset, false);
-        StatesMoveRanged[7] = new PlayerBillboardState("MoveRangedForwardRight", StatesMoveRangedLength, archiveFoot, 26, 3, StatesAttackRangedOffset*scaleOffset, false);
-
-        StatesMoveSpell = new PlayerBillboardState[numberOrientations];
-        StatesMoveSpell[0] = new PlayerBillboardState("MoveSpellForward", StatesMoveSpellLength, archiveFoot, 20, 0, StatesAttackSpellOffset*scaleOffset, false);
-        StatesMoveSpell[1] = new PlayerBillboardState("MoveSpellForwardLeft", StatesMoveSpellLength, archiveFoot, 21, 0, StatesAttackSpellOffset*scaleOffset, true);
-        StatesMoveSpell[2] = new PlayerBillboardState("MoveSpellLeft", StatesMoveSpellLength, archiveFoot, 22, 0, StatesAttackSpellOffset*scaleOffset, true);
-        StatesMoveSpell[3] = new PlayerBillboardState("MoveSpellBackwardLeft", StatesMoveSpellLength, archiveFoot, 23, 0, StatesAttackSpellOffset*scaleOffset, true);
-        StatesMoveSpell[4] = new PlayerBillboardState("MoveSpellBackward", StatesMoveSpellLength, archiveFoot, 24, 0, StatesAttackSpellOffset*scaleOffset, false);
-        StatesMoveSpell[5] = new PlayerBillboardState("MoveSpellBackwardRight", StatesMoveSpellLength, archiveFoot, 23, 0, StatesAttackSpellOffset*scaleOffset, false);
-        StatesMoveSpell[6] = new PlayerBillboardState("MoveSpellRight", StatesMoveSpellLength, archiveFoot, 22, 0, StatesAttackSpellOffset*scaleOffset, false);
-        StatesMoveSpell[7] = new PlayerBillboardState("MoveSpellForwardRight", StatesMoveSpellLength, archiveFoot, 21, 0, StatesAttackSpellOffset*scaleOffset, false);
-
-        StatesAttackMelee = new PlayerBillboardState[numberOrientations];
-        StatesAttackMelee[0] = new PlayerBillboardState("AttackMeleeForward", StatesAttackMeleeLength, archiveFoot, 5, 0, StatesAttackMeleeOffset*scaleOffset, false);
-        StatesAttackMelee[1] = new PlayerBillboardState("AttackMeleeForwardLeft", StatesAttackMeleeLength, archiveFoot, 6, 0, StatesAttackMeleeOffset*scaleOffset, true);
-        StatesAttackMelee[2] = new PlayerBillboardState("AttackMeleeLeft", StatesAttackMeleeLength, archiveFoot, 7, 0, StatesAttackMeleeOffset*scaleOffset, true);
-        StatesAttackMelee[3] = new PlayerBillboardState("AttackMeleeBackwardLeft", StatesAttackMeleeLength, archiveFoot, 8, 0, StatesAttackMeleeOffset*scaleOffset, true);
-        StatesAttackMelee[4] = new PlayerBillboardState("AttackMeleeBackward", StatesAttackMeleeLength, archiveFoot, 9, 0, StatesAttackMeleeOffset*scaleOffset, false);
-        StatesAttackMelee[5] = new PlayerBillboardState("AttackMeleeBackwardRight", StatesAttackMeleeLength, archiveFoot, 8, 0, StatesAttackMeleeOffset*scaleOffset, false);
-        StatesAttackMelee[6] = new PlayerBillboardState("AttackMeleeRight", StatesAttackMeleeLength, archiveFoot, 7, 0, StatesAttackMeleeOffset*scaleOffset, false);
-        StatesAttackMelee[7] = new PlayerBillboardState("AttackMeleeForwardRight", StatesAttackMeleeLength, archiveFoot, 6, 0, StatesAttackMeleeOffset*scaleOffset, false);
-
-        StatesAttackRanged = new PlayerBillboardState[numberOrientations];
-        StatesAttackRanged[0] = new PlayerBillboardState("AttackRangedForward", StatesAttackRangedLength, archiveFoot, 25, 0, StatesAttackRangedOffset*scaleOffset, false);
-        StatesAttackRanged[1] = new PlayerBillboardState("AttackRangedForwardLeft", StatesAttackRangedLength, archiveFoot, 26, 0, StatesAttackRangedOffset*scaleOffset, true);
-        StatesAttackRanged[2] = new PlayerBillboardState("AttackRangedLeft", StatesAttackRangedLength, archiveFoot, 27, 0, StatesAttackRangedOffset*scaleOffset, true);
-        StatesAttackRanged[3] = new PlayerBillboardState("AttackRangedBackwardLeft", StatesAttackRangedLength, archiveFoot, 28, 0, StatesAttackRangedOffset*scaleOffset, true);
-        StatesAttackRanged[4] = new PlayerBillboardState("AttackRangedBackward", StatesAttackRangedLength, archiveFoot, 29, 0, StatesAttackRangedOffset*scaleOffset, false);
-        StatesAttackRanged[5] = new PlayerBillboardState("AttackRangedBackwardRight", StatesAttackRangedLength, archiveFoot, 28, 0, StatesAttackRangedOffset*scaleOffset, false);
-        StatesAttackRanged[6] = new PlayerBillboardState("AttackRangedRight", StatesAttackRangedLength, archiveFoot, 27, 0, StatesAttackRangedOffset*scaleOffset, false);
-        StatesAttackRanged[7] = new PlayerBillboardState("AttackRangedForwardRight", StatesAttackRangedLength, archiveFoot, 26, 0, StatesAttackRangedOffset*scaleOffset, false);
-
-        StatesAttackSpell = new PlayerBillboardState[numberOrientations];
-        StatesAttackSpell[0] = new PlayerBillboardState("AttackSpellForward", StatesAttackSpellLength, archiveFoot, 20, 0, StatesAttackSpellOffset*scaleOffset, false);
-        StatesAttackSpell[1] = new PlayerBillboardState("AttackSpellForwardLeft", StatesAttackSpellLength, archiveFoot, 21, 0, StatesAttackSpellOffset*scaleOffset, true);
-        StatesAttackSpell[2] = new PlayerBillboardState("AttackSpellLeft", StatesAttackSpellLength, archiveFoot, 22, 0, StatesAttackSpellOffset*scaleOffset, true);
-        StatesAttackSpell[3] = new PlayerBillboardState("AttackSpellBackwardLeft", StatesAttackSpellLength, archiveFoot, 23, 0, StatesAttackSpellOffset*scaleOffset, true);
-        StatesAttackSpell[4] = new PlayerBillboardState("AttackSpellBackward", StatesAttackSpellLength, archiveFoot, 24, 0, StatesAttackSpellOffset*scaleOffset, false);
-        StatesAttackSpell[5] = new PlayerBillboardState("AttackSpellBackwardRight", StatesAttackSpellLength, archiveFoot, 23, 0, StatesAttackSpellOffset*scaleOffset, false);
-        StatesAttackSpell[6] = new PlayerBillboardState("AttackSpellRight", StatesAttackSpellLength, archiveFoot, 22, 0, StatesAttackSpellOffset*scaleOffset, false);
-        StatesAttackSpell[7] = new PlayerBillboardState("AttackSpellForwardRight", StatesAttackSpellLength, archiveFoot, 21, 0, StatesAttackSpellOffset*scaleOffset, false);
+        StatesMove[0] = new PlayerBillboardState("MoveForward", archiveFoot, 5, 0, false);
+        StatesMove[1] = new PlayerBillboardState("MoveForwardLeft", archiveFoot, 6, 0, true);
+        StatesMove[2] = new PlayerBillboardState("MoveLeft", archiveFoot, 7, 0, true);
+        StatesMove[3] = new PlayerBillboardState("MoveBackwardLeft", archiveFoot, 8, 0, true);
+        StatesMove[4] = new PlayerBillboardState("MoveBackward", archiveFoot, 9, 0, false);
+        StatesMove[5] = new PlayerBillboardState("MoveBackwardRight", archiveFoot, 8, 0, false);
+        StatesMove[6] = new PlayerBillboardState("MoveRight", archiveFoot, 7, 0, false);
+        StatesMove[7] = new PlayerBillboardState("MoveForwardRight", archiveFoot, 6, 0, false);
 
         StatesDeath = new PlayerBillboardState[numberOrientations];
-        StatesDeath[0] = new PlayerBillboardState("Death", StatesDeathLength, archiveFoot, 10, 0, StatesDeathOffset*scaleOffset, false);
-        StatesDeath[1] = new PlayerBillboardState("Death", StatesDeathLength, archiveFoot, 11, 0, StatesDeathOffset*scaleOffset, true);
-        StatesDeath[2] = new PlayerBillboardState("Death", StatesDeathLength, archiveFoot, 12, 0, StatesDeathOffset*scaleOffset, true);
-        StatesDeath[3] = new PlayerBillboardState("Death", StatesDeathLength, archiveFoot, 13, 0, StatesDeathOffset*scaleOffset, true);
-        StatesDeath[4] = new PlayerBillboardState("Death", StatesDeathLength, archiveFoot, 14, 0, StatesDeathOffset*scaleOffset, false);
-        StatesDeath[5] = new PlayerBillboardState("Death", StatesDeathLength, archiveFoot, 13, 0, StatesDeathOffset*scaleOffset, false);
-        StatesDeath[6] = new PlayerBillboardState("Death", StatesDeathLength, archiveFoot, 12, 0, StatesDeathOffset*scaleOffset, false);
-        StatesDeath[7] = new PlayerBillboardState("Death", StatesDeathLength, archiveFoot, 11, 0, StatesDeathOffset*scaleOffset, false);
+        StatesDeath[0] = new PlayerBillboardState("Death", archiveFoot, 10, 0, false);
+        StatesDeath[1] = new PlayerBillboardState("Death", archiveFoot, 11, 0, true);
+        StatesDeath[2] = new PlayerBillboardState("Death", archiveFoot, 12, 0, true);
+        StatesDeath[3] = new PlayerBillboardState("Death", archiveFoot, 13, 0, true);
+        StatesDeath[4] = new PlayerBillboardState("Death", archiveFoot, 14, 0, false);
+        StatesDeath[5] = new PlayerBillboardState("Death", archiveFoot, 13, 0, false);
+        StatesDeath[6] = new PlayerBillboardState("Death", archiveFoot, 12, 0, false);
+        StatesDeath[7] = new PlayerBillboardState("Death", archiveFoot, 11, 0, false);
+
+        StatesIdleMelee = new PlayerBillboardState[numberOrientations];
+        StatesIdleMelee[0] = new PlayerBillboardState("ReadyMeleeForward", archiveFoot, 15, 0, false);
+        StatesIdleMelee[1] = new PlayerBillboardState("ReadyMeleeForwardLeft", archiveFoot, 16, 0, true);
+        StatesIdleMelee[2] = new PlayerBillboardState("ReadyMeleeLeft", archiveFoot, 17, 0, true);
+        StatesIdleMelee[3] = new PlayerBillboardState("ReadyMeleeBackwardLeft", archiveFoot, 18, 0, true);
+        StatesIdleMelee[4] = new PlayerBillboardState("ReadyMeleeBackward", archiveFoot, 19, 0, false);
+        StatesIdleMelee[5] = new PlayerBillboardState("ReadyMeleeBackwardRight", archiveFoot, 18, 0, false);
+        StatesIdleMelee[6] = new PlayerBillboardState("ReadyMeleeRight", archiveFoot, 17, 0, false);
+        StatesIdleMelee[7] = new PlayerBillboardState("ReadyMeleeForwardRight", archiveFoot, 16, 0, false);
+
+        StatesMoveMelee = new PlayerBillboardState[numberOrientations];
+        StatesMoveMelee[0] = new PlayerBillboardState("MoveMeleeForward", archiveFoot, 20, 0, false);
+        StatesMoveMelee[1] = new PlayerBillboardState("MoveMeleeForwardLeft", archiveFoot, 21, 0, true);
+        StatesMoveMelee[2] = new PlayerBillboardState("MoveMeleeLeft", archiveFoot, 22, 0, true);
+        StatesMoveMelee[3] = new PlayerBillboardState("MoveMeleeBackwardLeft", archiveFoot, 23, 0, true);
+        StatesMoveMelee[4] = new PlayerBillboardState("MoveMeleeBackward", archiveFoot, 24, 0, false);
+        StatesMoveMelee[5] = new PlayerBillboardState("MoveMeleeBackwardRight", archiveFoot, 23, 0, false);
+        StatesMoveMelee[6] = new PlayerBillboardState("MoveMeleeRight", archiveFoot, 22, 0, false);
+        StatesMoveMelee[7] = new PlayerBillboardState("MoveMeleeForwardRight", archiveFoot, 21, 0, false);
+
+        StatesAttackMelee = new PlayerBillboardState[numberOrientations];
+        StatesAttackMelee[0] = new PlayerBillboardState("AttackMeleeForward", archiveFoot, 25, 0, false);
+        StatesAttackMelee[1] = new PlayerBillboardState("AttackMeleeForwardLeft", archiveFoot, 26, 0, true);
+        StatesAttackMelee[2] = new PlayerBillboardState("AttackMeleeLeft", archiveFoot, 27, 0, true);
+        StatesAttackMelee[3] = new PlayerBillboardState("AttackMeleeBackwardLeft", archiveFoot, 28, 0, true);
+        StatesAttackMelee[4] = new PlayerBillboardState("AttackMeleeBackward", archiveFoot, 29, 0, false);
+        StatesAttackMelee[5] = new PlayerBillboardState("AttackMeleeBackwardRight", archiveFoot, 28, 0, false);
+        StatesAttackMelee[6] = new PlayerBillboardState("AttackMeleeRight", archiveFoot, 27, 0, false);
+        StatesAttackMelee[7] = new PlayerBillboardState("AttackMeleeForwardRight", archiveFoot, 26, 0, false);
+
+        StatesIdleRanged = new PlayerBillboardState[numberOrientations];
+        StatesIdleRanged[0] = new PlayerBillboardState("ReadyRangedForward", archiveFoot, 30, 3, false);
+        StatesIdleRanged[1] = new PlayerBillboardState("ReadyRangedForwardLeft", archiveFoot, 31, 3, true);
+        StatesIdleRanged[2] = new PlayerBillboardState("ReadyRangedLeft", archiveFoot, 32, 3, true);
+        StatesIdleRanged[3] = new PlayerBillboardState("ReadyRangedBackwardLeft", archiveFoot, 33, 3, true);
+        StatesIdleRanged[4] = new PlayerBillboardState("ReadyRangedBackward", archiveFoot, 34, 3, false);
+        StatesIdleRanged[5] = new PlayerBillboardState("ReadyRangedBackwardRight", archiveFoot, 33, 3, false);
+        StatesIdleRanged[6] = new PlayerBillboardState("ReadyRangedRight", archiveFoot, 32, 3, false);
+        StatesIdleRanged[7] = new PlayerBillboardState("ReadyRangedForwardRight", archiveFoot, 31, 3, false);
+
+        StatesMoveRanged = new PlayerBillboardState[numberOrientations];
+        StatesMoveRanged[0] = new PlayerBillboardState("MoveRangedForward", archiveFoot, 35, 3, false);
+        StatesMoveRanged[1] = new PlayerBillboardState("MoveRangedForwardLeft", archiveFoot, 36, 3, true);
+        StatesMoveRanged[2] = new PlayerBillboardState("MoveRangedLeft", archiveFoot, 37, 3, true);
+        StatesMoveRanged[3] = new PlayerBillboardState("MoveRangedBackwardLeft", archiveFoot, 38, 3, true);
+        StatesMoveRanged[4] = new PlayerBillboardState("MoveRangedBackward", archiveFoot, 39, 3, false);
+        StatesMoveRanged[5] = new PlayerBillboardState("MoveRangedBackwardRight", archiveFoot, 38, 3, false);
+        StatesMoveRanged[6] = new PlayerBillboardState("MoveRangedRight", archiveFoot, 37, 3, false);
+        StatesMoveRanged[7] = new PlayerBillboardState("MoveRangedForwardRight", archiveFoot, 36, 3, false);
+
+        StatesAttackRanged = new PlayerBillboardState[numberOrientations];
+        StatesAttackRanged[0] = new PlayerBillboardState("AttackRangedForward", archiveFoot, 40, 0, false);
+        StatesAttackRanged[1] = new PlayerBillboardState("AttackRangedForwardLeft", archiveFoot, 41, 0, true);
+        StatesAttackRanged[2] = new PlayerBillboardState("AttackRangedLeft", archiveFoot, 42, 0, true);
+        StatesAttackRanged[3] = new PlayerBillboardState("AttackRangedBackwardLeft", archiveFoot, 43, 0, true);
+        StatesAttackRanged[4] = new PlayerBillboardState("AttackRangedBackward", archiveFoot, 44, 0, false);
+        StatesAttackRanged[5] = new PlayerBillboardState("AttackRangedBackwardRight", archiveFoot, 43, 0, false);
+        StatesAttackRanged[6] = new PlayerBillboardState("AttackRangedRight", archiveFoot, 42, 0, false);
+        StatesAttackRanged[7] = new PlayerBillboardState("AttackRangedForwardRight", archiveFoot, 41, 0, false);
+
+        StatesIdleSpell = new PlayerBillboardState[numberOrientations];
+        StatesIdleSpell[0] = new PlayerBillboardState("ReadySpellForward", archiveFoot, 45, 0, false);
+        StatesIdleSpell[1] = new PlayerBillboardState("ReadySpellForwardLeft", archiveFoot, 46, 0, true);
+        StatesIdleSpell[2] = new PlayerBillboardState("ReadySpellLeft", archiveFoot, 47, 0, true);
+        StatesIdleSpell[3] = new PlayerBillboardState("ReadySpellBackwardLeft", archiveFoot, 48, 0, true);
+        StatesIdleSpell[4] = new PlayerBillboardState("ReadySpellBackward", archiveFoot, 49, 0, false);
+        StatesIdleSpell[5] = new PlayerBillboardState("ReadySpellBackwardRight", archiveFoot, 48, 0, false);
+        StatesIdleSpell[6] = new PlayerBillboardState("ReadySpellRight", archiveFoot, 47, 0, false);
+        StatesIdleSpell[7] = new PlayerBillboardState("ReadySpellForwardRight", archiveFoot, 46, 0, false);
+
+        StatesMoveSpell = new PlayerBillboardState[numberOrientations];
+        StatesMoveSpell[0] = new PlayerBillboardState("MoveSpellForward", archiveFoot, 50, 0, false);
+        StatesMoveSpell[1] = new PlayerBillboardState("MoveSpellForwardLeft", archiveFoot, 51, 0, true);
+        StatesMoveSpell[2] = new PlayerBillboardState("MoveSpellLeft", archiveFoot, 52, 0, true);
+        StatesMoveSpell[3] = new PlayerBillboardState("MoveSpellBackwardLeft", archiveFoot, 53, 0, true);
+        StatesMoveSpell[4] = new PlayerBillboardState("MoveSpellBackward", archiveFoot, 54, 0, false);
+        StatesMoveSpell[5] = new PlayerBillboardState("MoveSpellBackwardRight", archiveFoot, 53, 0, false);
+        StatesMoveSpell[6] = new PlayerBillboardState("MoveSpellRight", archiveFoot, 52, 0, false);
+        StatesMoveSpell[7] = new PlayerBillboardState("MoveSpellForwardRight", archiveFoot, 51, 0, false);
+
+        StatesAttackSpell = new PlayerBillboardState[numberOrientations];
+        StatesAttackSpell[0] = new PlayerBillboardState("AttackSpellForward", archiveFoot, 55, 0, false);
+        StatesAttackSpell[1] = new PlayerBillboardState("AttackSpellForwardLeft", archiveFoot, 56, 0, true);
+        StatesAttackSpell[2] = new PlayerBillboardState("AttackSpellLeft", archiveFoot, 57, 0, true);
+        StatesAttackSpell[3] = new PlayerBillboardState("AttackSpellBackwardLeft", archiveFoot, 58, 0, true);
+        StatesAttackSpell[4] = new PlayerBillboardState("AttackSpellBackward", archiveFoot, 59, 0, false);
+        StatesAttackSpell[5] = new PlayerBillboardState("AttackSpellBackwardRight", archiveFoot, 58, 0, false);
+        StatesAttackSpell[6] = new PlayerBillboardState("AttackSpellRight", archiveFoot, 57, 0, false);
+        StatesAttackSpell[7] = new PlayerBillboardState("AttackSpellForwardRight", archiveFoot, 56, 0, false);
 
         StatesIdleHorse = new PlayerBillboardState[numberOrientations];
-        StatesIdleHorse[0] = new PlayerBillboardState("IdleForward", StatesIdleHorseLength, archiveHorse, 0, 0, StatesIdleHorseOffset*scaleOffset, false);
-        StatesIdleHorse[1] = new PlayerBillboardState("IdleForwardLeft", StatesIdleHorseLength, archiveHorse, 1, 0, StatesIdleHorseOffset*scaleOffset, true);
-        StatesIdleHorse[2] = new PlayerBillboardState("IdleLeft", StatesIdleHorseLength, archiveHorse, 2, 0, StatesIdleHorseOffset*scaleOffset, true);
-        StatesIdleHorse[3] = new PlayerBillboardState("IdleBackwardLeft", StatesIdleHorseLength, archiveHorse, 3, 0, StatesIdleHorseOffset*scaleOffset, true);
-        StatesIdleHorse[4] = new PlayerBillboardState("IdleBackward", StatesIdleHorseLength, archiveHorse, 4, 0, StatesIdleHorseOffset*scaleOffset, false);
-        StatesIdleHorse[5] = new PlayerBillboardState("IdleBackwardRight", StatesIdleHorseLength, archiveHorse, 3, 0, StatesIdleHorseOffset*scaleOffset, false);
-        StatesIdleHorse[6] = new PlayerBillboardState("IdleRight", StatesIdleHorseLength, archiveHorse, 2, 0, StatesIdleHorseOffset*scaleOffset, false);
-        StatesIdleHorse[7] = new PlayerBillboardState("IdleForwardRight", StatesIdleHorseLength, archiveHorse, 1, 0, StatesIdleHorseOffset*scaleOffset, false);
+        StatesIdleHorse[0] = new PlayerBillboardState("IdleForward", archiveHorse, 0, 0,  false);
+        StatesIdleHorse[1] = new PlayerBillboardState("IdleForwardLeft", archiveHorse, 1, 0,  true);
+        StatesIdleHorse[2] = new PlayerBillboardState("IdleLeft", archiveHorse, 2, 0,  true);
+        StatesIdleHorse[3] = new PlayerBillboardState("IdleBackwardLeft", archiveHorse, 3, 0,  true);
+        StatesIdleHorse[4] = new PlayerBillboardState("IdleBackward", archiveHorse, 4, 0,  false);
+        StatesIdleHorse[5] = new PlayerBillboardState("IdleBackwardRight", archiveHorse, 3, 0,  false);
+        StatesIdleHorse[6] = new PlayerBillboardState("IdleRight", archiveHorse, 2, 0,  false);
+        StatesIdleHorse[7] = new PlayerBillboardState("IdleForwardRight", archiveHorse, 1, 0,  false);
 
         StatesMoveHorse = new PlayerBillboardState[numberOrientations];
-        StatesMoveHorse[0] = new PlayerBillboardState("MoveForward", StatesMoveHorseLength, archiveHorse, 0, 0, StatesMoveHorseOffset*scaleOffset, false);
-        StatesMoveHorse[1] = new PlayerBillboardState("MoveForwardLeft", StatesMoveHorseLength, archiveHorse, 1, 0, StatesMoveHorseOffset*scaleOffset, true);
-        StatesMoveHorse[2] = new PlayerBillboardState("MoveLeft", StatesMoveHorseLength, archiveHorse, 2, 0, StatesMoveHorseOffset*scaleOffset, true);
-        StatesMoveHorse[3] = new PlayerBillboardState("MoveBackwardLeft", StatesMoveHorseLength, archiveHorse, 3, 0, StatesMoveHorseOffset*scaleOffset, true);
-        StatesMoveHorse[4] = new PlayerBillboardState("MoveBackward", StatesMoveHorseLength, archiveHorse, 4, 0, StatesMoveHorseOffset*scaleOffset, false);
-        StatesMoveHorse[5] = new PlayerBillboardState("MoveBackwardRight", StatesMoveHorseLength, archiveHorse, 3, 0, StatesMoveHorseOffset*scaleOffset, false);
-        StatesMoveHorse[6] = new PlayerBillboardState("MoveRight", StatesMoveHorseLength, archiveHorse, 2, 0, StatesMoveHorseOffset*scaleOffset, false);
-        StatesMoveHorse[7] = new PlayerBillboardState("MoveForwardRight", StatesMoveHorseLength, archiveHorse, 1, 0, StatesMoveHorseOffset*scaleOffset, false);
+        StatesMoveHorse[0] = new PlayerBillboardState("MoveForward", archiveHorse, 5, 0,  false);
+        StatesMoveHorse[1] = new PlayerBillboardState("MoveForwardLeft", archiveHorse, 6, 0,  true);
+        StatesMoveHorse[2] = new PlayerBillboardState("MoveLeft", archiveHorse, 7, 0,  true);
+        StatesMoveHorse[3] = new PlayerBillboardState("MoveBackwardLeft", archiveHorse, 8, 0,  true);
+        StatesMoveHorse[4] = new PlayerBillboardState("MoveBackward", archiveHorse, 9, 0,  false);
+        StatesMoveHorse[5] = new PlayerBillboardState("MoveBackwardRight", archiveHorse, 8, 0,  false);
+        StatesMoveHorse[6] = new PlayerBillboardState("MoveRight", archiveHorse, 7, 0,  false);
+        StatesMoveHorse[7] = new PlayerBillboardState("MoveForwardRight", archiveHorse, 6, 0,  false);
+
+        StatesGallopHorse = new PlayerBillboardState[numberOrientations];
+        StatesGallopHorse[0] = new PlayerBillboardState("MoveForward", archiveHorse, 10, 0, false);
+        StatesGallopHorse[1] = new PlayerBillboardState("MoveForwardLeft", archiveHorse, 11, 0, true);
+        StatesGallopHorse[2] = new PlayerBillboardState("MoveLeft", archiveHorse, 12, 0, true);
+        StatesGallopHorse[3] = new PlayerBillboardState("MoveBackwardLeft", archiveHorse, 13, 0, true);
+        StatesGallopHorse[4] = new PlayerBillboardState("MoveBackward", archiveHorse, 14, 0, false);
+        StatesGallopHorse[5] = new PlayerBillboardState("MoveBackwardRight", archiveHorse, 13, 0, false);
+        StatesGallopHorse[6] = new PlayerBillboardState("MoveRight", archiveHorse, 12, 0, false);
+        StatesGallopHorse[7] = new PlayerBillboardState("MoveForwardRight", archiveHorse, 11, 0, false);
 
         StatesIdleLycan = new PlayerBillboardState[numberOrientations];
-        StatesIdleLycan[0] = new PlayerBillboardState("IdleForward", StatesIdleLycanLength, archiveLycan, 0, 0, StatesIdleLycanOffset*scaleOffset, false);
-        StatesIdleLycan[1] = new PlayerBillboardState("IdleForwardLeft", StatesIdleLycanLength, archiveLycan, 1, 0, StatesIdleLycanOffset*scaleOffset, true);
-        StatesIdleLycan[2] = new PlayerBillboardState("IdleLeft", StatesIdleLycanLength, archiveLycan, 2, 0, StatesIdleLycanOffset*scaleOffset, true);
-        StatesIdleLycan[3] = new PlayerBillboardState("IdleBackwardLeft", StatesIdleLycanLength, archiveLycan, 3, 0, StatesIdleLycanOffset*scaleOffset, true);
-        StatesIdleLycan[4] = new PlayerBillboardState("IdleBackward", StatesIdleLycanLength, archiveLycan, 4, 0, StatesIdleLycanOffset*scaleOffset, false);
-        StatesIdleLycan[5] = new PlayerBillboardState("IdleBackwardRight", StatesIdleLycanLength, archiveLycan, 3, 0, StatesIdleLycanOffset*scaleOffset, false);
-        StatesIdleLycan[6] = new PlayerBillboardState("IdleRight", StatesIdleLycanLength, archiveLycan, 2, 0, StatesIdleLycanOffset*scaleOffset, false);
-        StatesIdleLycan[7] = new PlayerBillboardState("IdleForwardRight", StatesIdleLycanLength, archiveLycan, 1, 0, StatesIdleLycanOffset*scaleOffset, false);
-
-        StatesReadyLycan = new PlayerBillboardState[numberOrientations];
-        StatesReadyLycan[0] = new PlayerBillboardState("ReadyLycanForward", StatesReadyLycanLength, archiveLycan, 5, 0, StatesAttackLycanOffset*scaleOffset, false);
-        StatesReadyLycan[1] = new PlayerBillboardState("ReadyLycanForwardLeft", StatesReadyLycanLength, archiveLycan, 6, 0, StatesAttackLycanOffset*scaleOffset, true);
-        StatesReadyLycan[2] = new PlayerBillboardState("ReadyLycanLeft", StatesReadyLycanLength, archiveLycan, 7, 0, StatesAttackLycanOffset*scaleOffset, true);
-        StatesReadyLycan[3] = new PlayerBillboardState("ReadyLycanBackwardLeft", StatesReadyLycanLength, archiveLycan, 8, 0, StatesAttackLycanOffset*scaleOffset, true);
-        StatesReadyLycan[4] = new PlayerBillboardState("ReadyLycanBackward", StatesReadyLycanLength, archiveLycan, 9, 0, StatesAttackLycanOffset*scaleOffset, false);
-        StatesReadyLycan[5] = new PlayerBillboardState("ReadyLycanBackwardRight", StatesReadyLycanLength, archiveLycan, 8, 0, StatesAttackLycanOffset*scaleOffset, false);
-        StatesReadyLycan[6] = new PlayerBillboardState("ReadyLycanRight", StatesReadyLycanLength, archiveLycan, 7, 0, StatesAttackLycanOffset*scaleOffset, false);
-        StatesReadyLycan[7] = new PlayerBillboardState("ReadyLycanForwardRight", StatesReadyLycanLength, archiveLycan, 6, 0, StatesAttackLycanOffset*scaleOffset, false);
+        StatesIdleLycan[0] = new PlayerBillboardState("IdleForward", archiveLycan, 0, 0,  false);
+        StatesIdleLycan[1] = new PlayerBillboardState("IdleForwardLeft", archiveLycan, 1, 0,  true);
+        StatesIdleLycan[2] = new PlayerBillboardState("IdleLeft", archiveLycan, 2, 0,  true);
+        StatesIdleLycan[3] = new PlayerBillboardState("IdleBackwardLeft", archiveLycan, 3, 0,  true);
+        StatesIdleLycan[4] = new PlayerBillboardState("IdleBackward", archiveLycan, 4, 0,  false);
+        StatesIdleLycan[5] = new PlayerBillboardState("IdleBackwardRight", archiveLycan, 3, 0,  false);
+        StatesIdleLycan[6] = new PlayerBillboardState("IdleRight", archiveLycan, 2, 0,  false);
+        StatesIdleLycan[7] = new PlayerBillboardState("IdleForwardRight", archiveLycan, 1, 0,  false);
 
         StatesMoveLycan = new PlayerBillboardState[numberOrientations];
-        StatesMoveLycan[0] = new PlayerBillboardState("MoveForward", StatesMoveLycanLength, archiveLycan, 0, 0, StatesMoveLycanOffset*scaleOffset, false);
-        StatesMoveLycan[1] = new PlayerBillboardState("MoveForwardLeft", StatesMoveLycanLength, archiveLycan, 1, 0, StatesMoveLycanOffset*scaleOffset, true);
-        StatesMoveLycan[2] = new PlayerBillboardState("MoveLeft", StatesMoveLycanLength, archiveLycan, 2, 0, StatesMoveLycanOffset*scaleOffset, true);
-        StatesMoveLycan[3] = new PlayerBillboardState("MoveBackwardLeft", StatesMoveLycanLength, archiveLycan, 3, 0, StatesMoveLycanOffset*scaleOffset, true);
-        StatesMoveLycan[4] = new PlayerBillboardState("MoveBackward", StatesMoveLycanLength, archiveLycan, 4, 0, StatesMoveLycanOffset*scaleOffset, false);
-        StatesMoveLycan[5] = new PlayerBillboardState("MoveBackwardRight", StatesMoveLycanLength, archiveLycan, 3, 0, StatesMoveLycanOffset*scaleOffset, false);
-        StatesMoveLycan[6] = new PlayerBillboardState("MoveRight", StatesMoveLycanLength, archiveLycan, 2, 0, StatesMoveLycanOffset*scaleOffset, false);
-        StatesMoveLycan[7] = new PlayerBillboardState("MoveForwardRight", StatesMoveLycanLength, archiveLycan, 1, 0, StatesMoveLycanOffset*scaleOffset, false);
+        StatesMoveLycan[0] = new PlayerBillboardState("MoveForward", archiveLycan, 5, 0,  false);
+        StatesMoveLycan[1] = new PlayerBillboardState("MoveForwardLeft", archiveLycan, 6, 0,  true);
+        StatesMoveLycan[2] = new PlayerBillboardState("MoveLeft", archiveLycan, 7, 0,  true);
+        StatesMoveLycan[3] = new PlayerBillboardState("MoveBackwardLeft", archiveLycan, 8, 0,  true);
+        StatesMoveLycan[4] = new PlayerBillboardState("MoveBackward", archiveLycan, 9, 0,  false);
+        StatesMoveLycan[5] = new PlayerBillboardState("MoveBackwardRight", archiveLycan, 8, 0,  false);
+        StatesMoveLycan[6] = new PlayerBillboardState("MoveRight", archiveLycan, 7, 0,  false);
+        StatesMoveLycan[7] = new PlayerBillboardState("MoveForwardRight", archiveLycan, 6, 0,  false);
 
-        StatesAttackLycan = new PlayerBillboardState[numberOrientations];
-        StatesAttackLycan[0] = new PlayerBillboardState("AttackLycanForward", StatesAttackLycanLength, archiveLycan, 5, 0, StatesAttackLycanOffset*scaleOffset, false);
-        StatesAttackLycan[1] = new PlayerBillboardState("AttackLycanForwardLeft", StatesAttackLycanLength, archiveLycan, 6, 0, StatesAttackLycanOffset*scaleOffset, true);
-        StatesAttackLycan[2] = new PlayerBillboardState("AttackLycanLeft", StatesAttackLycanLength, archiveLycan, 7, 0, StatesAttackLycanOffset*scaleOffset, true);
-        StatesAttackLycan[3] = new PlayerBillboardState("AttackLycanBackwardLeft", StatesAttackLycanLength, archiveLycan, 8, 0, StatesAttackLycanOffset*scaleOffset, true);
-        StatesAttackLycan[4] = new PlayerBillboardState("AttackLycanBackward", StatesAttackLycanLength, archiveLycan, 9, 0, StatesAttackLycanOffset*scaleOffset, false);
-        StatesAttackLycan[5] = new PlayerBillboardState("AttackLycanBackwardRight", StatesAttackLycanLength, archiveLycan, 8, 0, StatesAttackLycanOffset*scaleOffset, false);
-        StatesAttackLycan[6] = new PlayerBillboardState("AttackLycanRight", StatesAttackLycanLength, archiveLycan, 7, 0, StatesAttackLycanOffset*scaleOffset, false);
-        StatesAttackLycan[7] = new PlayerBillboardState("AttackLycanForwardRight", StatesAttackLycanLength, archiveLycan, 6, 0, StatesAttackLycanOffset*scaleOffset, false);
+        StatesIdleMeleeLycan = new PlayerBillboardState[numberOrientations];
+        StatesIdleMeleeLycan[0] = new PlayerBillboardState("ReadyLycanForward", archiveLycan, 15, 0, false);
+        StatesIdleMeleeLycan[1] = new PlayerBillboardState("ReadyLycanForwardLeft", archiveLycan, 16, 0, true);
+        StatesIdleMeleeLycan[2] = new PlayerBillboardState("ReadyLycanLeft", archiveLycan, 17, 0, true);
+        StatesIdleMeleeLycan[3] = new PlayerBillboardState("ReadyLycanBackwardLeft", archiveLycan, 18, 0, true);
+        StatesIdleMeleeLycan[4] = new PlayerBillboardState("ReadyLycanBackward", archiveLycan, 19, 0, false);
+        StatesIdleMeleeLycan[5] = new PlayerBillboardState("ReadyLycanBackwardRight", archiveLycan, 18, 0, false);
+        StatesIdleMeleeLycan[6] = new PlayerBillboardState("ReadyLycanRight", archiveLycan, 17, 0, false);
+        StatesIdleMeleeLycan[7] = new PlayerBillboardState("ReadyLycanForwardRight", archiveLycan, 16, 0, false);
+
+        StatesMoveMeleeLycan = new PlayerBillboardState[numberOrientations];
+        StatesMoveMeleeLycan[0] = new PlayerBillboardState("ReadyLycanForward", archiveLycan, 20, 0, false);
+        StatesMoveMeleeLycan[1] = new PlayerBillboardState("ReadyLycanForwardLeft", archiveLycan, 21, 0, true);
+        StatesMoveMeleeLycan[2] = new PlayerBillboardState("ReadyLycanLeft", archiveLycan, 22, 0, true);
+        StatesMoveMeleeLycan[3] = new PlayerBillboardState("ReadyLycanBackwardLeft", archiveLycan, 23, 0, true);
+        StatesMoveMeleeLycan[4] = new PlayerBillboardState("ReadyLycanBackward", archiveLycan, 24, 0, false);
+        StatesMoveMeleeLycan[5] = new PlayerBillboardState("ReadyLycanBackwardRight", archiveLycan, 23, 0, false);
+        StatesMoveMeleeLycan[6] = new PlayerBillboardState("ReadyLycanRight", archiveLycan, 22, 0, false);
+        StatesMoveMeleeLycan[7] = new PlayerBillboardState("ReadyLycanForwardRight", archiveLycan, 21, 0, false);
+
+        StatesAttackMeleeLycan = new PlayerBillboardState[numberOrientations];
+        StatesAttackMeleeLycan[0] = new PlayerBillboardState("AttackLycanForward", archiveLycan, 25, 0,  false);
+        StatesAttackMeleeLycan[1] = new PlayerBillboardState("AttackLycanForwardLeft", archiveLycan, 26, 0,  true);
+        StatesAttackMeleeLycan[2] = new PlayerBillboardState("AttackLycanLeft", archiveLycan, 27, 0,  true);
+        StatesAttackMeleeLycan[3] = new PlayerBillboardState("AttackLycanBackwardLeft", archiveLycan, 28, 0,  true);
+        StatesAttackMeleeLycan[4] = new PlayerBillboardState("AttackLycanBackward", archiveLycan, 29, 0,  false);
+        StatesAttackMeleeLycan[5] = new PlayerBillboardState("AttackLycanBackwardRight", archiveLycan, 28, 0,  false);
+        StatesAttackMeleeLycan[6] = new PlayerBillboardState("AttackLycanRight", archiveLycan, 27, 0,  false);
+        StatesAttackMeleeLycan[7] = new PlayerBillboardState("AttackLycanForwardRight", archiveLycan, 26, 0,  false);
 
         StatesDeathLycan = new PlayerBillboardState[numberOrientations];
-        StatesDeathLycan[0] = new PlayerBillboardState("Death", StatesDeathLycanLength, archiveLycan, 10, 0, StatesDeathLycanOffset*scaleOffset, false);
-        StatesDeathLycan[1] = new PlayerBillboardState("Death", StatesDeathLycanLength, archiveLycan, 11, 0, StatesDeathLycanOffset*scaleOffset, true);
-        StatesDeathLycan[2] = new PlayerBillboardState("Death", StatesDeathLycanLength, archiveLycan, 12, 0, StatesDeathLycanOffset*scaleOffset, true);
-        StatesDeathLycan[3] = new PlayerBillboardState("Death", StatesDeathLycanLength, archiveLycan, 13, 0, StatesDeathLycanOffset*scaleOffset, true);
-        StatesDeathLycan[4] = new PlayerBillboardState("Death", StatesDeathLycanLength, archiveLycan, 14, 0, StatesDeathLycanOffset*scaleOffset, false);
-        StatesDeathLycan[5] = new PlayerBillboardState("Death", StatesDeathLycanLength, archiveLycan, 13, 0, StatesDeathLycanOffset*scaleOffset, false);
-        StatesDeathLycan[6] = new PlayerBillboardState("Death", StatesDeathLycanLength, archiveLycan, 12, 0, StatesDeathLycanOffset*scaleOffset, false);
-        StatesDeathLycan[7] = new PlayerBillboardState("Death", StatesDeathLycanLength, archiveLycan, 11, 0, StatesDeathLycanOffset*scaleOffset, false);
+        StatesDeathLycan[0] = new PlayerBillboardState("Death", archiveLycan, 10, 0,  false);
+        StatesDeathLycan[1] = new PlayerBillboardState("Death", archiveLycan, 11, 0,  true);
+        StatesDeathLycan[2] = new PlayerBillboardState("Death", archiveLycan, 12, 0,  true);
+        StatesDeathLycan[3] = new PlayerBillboardState("Death", archiveLycan, 13, 0,  true);
+        StatesDeathLycan[4] = new PlayerBillboardState("Death", archiveLycan, 14, 0,  false);
+        StatesDeathLycan[5] = new PlayerBillboardState("Death", archiveLycan, 13, 0,  false);
+        StatesDeathLycan[6] = new PlayerBillboardState("Death", archiveLycan, 12, 0,  false);
+        StatesDeathLycan[7] = new PlayerBillboardState("Death", archiveLycan, 11, 0,  false);
 
         lengthsChanged = false;
     }
 
     // Start is called before the first frame update
-    public void Initialize(int foot, int horse, float size, float sizeOffset, int ready, int turn, int attackString, float mirrorDecay, int pingpongAdjust, int torchFollow)
+    public void Initialize(int foot, int horse, float size, float sizeOffset, int ready, int turn, int attackString, float mirrorDecay, int pingpongAdjust, int firstPerson, int torchFollow)
     {
         if (!IsReady)
             return;
@@ -474,6 +471,7 @@ public class PlayerBillboard : MonoBehaviour
         attackStrings = attackString;
         mirrorTime = mirrorDecay;
         pingpongOffset = pingpongAdjust;
+        visibility = firstPerson;
         torchOffset = torchFollow;
         died = false;
 
@@ -534,13 +532,16 @@ public class PlayerBillboard : MonoBehaviour
 
         if (attackStrings == 1 || attackStrings == 3)
         {
-            if (mirrorCount > 0 && isAnimating == null && mirrorTime > 0)
+            float mirrorInt = mirrorTime;
+            if (FP)
+                mirrorInt = 0.1f;
+            if (mirrorCount > 0 && isAnimating == null && mirrorInt > 0)
             {
-                if (mirrorTimer > mirrorTime)
+                if (mirrorTimer > mirrorInt)
                 {
                     mirrorCount = 0;
                     mirrorTimer = 0;
-                    UpdateBillboard(frameCurrent,lastOrientation,stateCurrent);
+                    UpdateBillboardDelayed(frameCurrent,lastOrientation,stateCurrent);
                 }
                 else
                 {
@@ -558,12 +559,22 @@ public class PlayerBillboard : MonoBehaviour
         // Rotate to face camera in game
         if (mainCamera && Application.isPlaying)
         {
+            Vector3 viewDirection = -new Vector3(mainCamera.transform.forward.x, 0, mainCamera.transform.forward.z);
+
             // Rotate billboard based on camera facing
             if (FP)
-                cameraPosition = transform.parent.position + (Vector3.up*0.9f);
+            {
+                if (visibility == 2)
+                    viewDirection = viewDirection * -1;
+
+                if (EyeOfTheBeholder.Instance.hasFreeRein && GameManager.Instance.PlayerMotor.IsRiding)
+                    cameraPosition = transform.parent.position + (Vector3.up * 0.9f) + (mainCamera.transform.forward * -2);
+                else
+                    cameraPosition = transform.parent.position + (Vector3.up * 0.9f);
+            }
             else
                 cameraPosition = mainCamera.transform.position;
-            Vector3 viewDirection = -new Vector3(mainCamera.transform.forward.x, 0, mainCamera.transform.forward.z);
+
             transform.LookAt(transform.position + viewDirection);
 
             if (died)
@@ -580,6 +591,12 @@ public class PlayerBillboard : MonoBehaviour
             UpdateOrientation();
 
             UpdateMaterial();
+
+            /*if (GameManager.Instance.PlayerMotor.FreezeMotor > 0)
+            {
+                if (stateCurrent)
+                return;
+            }*/
 
             if (isAnimating == null)
             {
@@ -607,13 +624,37 @@ public class PlayerBillboard : MonoBehaviour
 
                 LoopIdleBillboard();
             }
+
+            if (footsteps)
+            {
+                //play footstep sound when landing
+                bool isGrounded = GameManager.Instance.PlayerMotor.IsGrounded;
+                if (isGrounded && !wasGrounded)
+                    PlayFootstep();
+                wasGrounded = isGrounded;
+            }
+
+        }
+    }
+
+    private void FixedUpdate()
+    {
+        if (footsteps)
+        {
+            if (EyeOfTheBeholder.Instance.hasTravelOptions && wasGrounded)
+            {
+                DaggerfallWorkshop.Game.Utility.ModSupport.ModManager.Instance.SendModMessage("TravelOptions", "isTravelActive", null, (string message, object data) =>
+                {
+                    isTravelling = (bool)data;
+                });
+            }
         }
     }
     void LoopIdleBillboard()
     {
         bool isGrounded = GameManager.Instance.PlayerMotor.IsGrounded;
         bool isSpellcasting = GameManager.Instance.PlayerEffectManager.HasReadySpell;
-        bool isStopped = GameManager.Instance.PlayerMotor.IsStandingStill;
+        bool isStopped = (GameManager.Instance.PlayerMotor.IsStandingStill || GameManager.Instance.PlayerMotor.FreezeMotor > 0) ? true : false;
         bool isSheathed = GameManager.Instance.WeaponManager.Sheathed;
         bool isUsingBow = GameManager.Instance.WeaponManager.ScreenWeapon.WeaponType == WeaponTypes.Bow;
         bool isRiding = GameManager.Instance.PlayerMotor.IsRiding;
@@ -656,7 +697,7 @@ public class PlayerBillboard : MonoBehaviour
         else if (floating)
             floating = false;
 
-        if (stateCurrent[lastOrientation].length > 1)
+        if (stateCurrent[lastOrientation].frames.Count > 1)
         {
             float speed = 1f;
 
@@ -689,16 +730,16 @@ public class PlayerBillboard : MonoBehaviour
 
             if (frameTimer > frameTime * speed)
             {
-                if (frameCurrent < stateCurrent[lastOrientation].length - 1)
+                if (frameCurrent < stateCurrent[lastOrientation].frames.Count - 1)
                     frameCurrent++;
                 else
                     frameCurrent = 0;
 
                 // Assign imported texture
-                if (frameCurrent > stateCurrent[lastOrientation].length - 1)
+                if (frameCurrent > stateCurrent[lastOrientation].frames.Count - 1)
                     frameCurrent = 0;
 
-                UpdateBillboard(frameCurrent, lastOrientation, stateCurrent);
+                UpdateBillboardDelayed(frameCurrent, lastOrientation, stateCurrent);
                 frameTimer = 0;
             }
             else
@@ -712,7 +753,7 @@ public class PlayerBillboard : MonoBehaviour
             if (isStopped)
             {
                 if (!isSheathed)
-                    stateCurrent = StatesReadyLycan;
+                    stateCurrent = StatesIdleMeleeLycan;
                 else
                     stateCurrent = StatesIdleLycan;
             }
@@ -730,13 +771,13 @@ public class PlayerBillboard : MonoBehaviour
                     if (readyStance > 0)
                     {
                         if (isSpellcasting)
-                            stateCurrent = StatesReadySpell;
+                            stateCurrent = StatesIdleSpell;
                         else if (!isSheathed)
                         {
                             if (isUsingBow)
-                                stateCurrent = StatesReadyRanged;
+                                stateCurrent = StatesIdleRanged;
                             else
-                                stateCurrent = StatesReadyMelee;
+                                stateCurrent = StatesIdleMelee;
                         }
                         else
                             stateCurrent = StatesIdle;
@@ -748,7 +789,13 @@ public class PlayerBillboard : MonoBehaviour
             else
             {
                 if (isRiding)
-                    stateCurrent = StatesMoveHorse;
+                {
+                    Vector3 speed = new Vector3(GameManager.Instance.PlayerMotor.MoveDirection.x,0, GameManager.Instance.PlayerMotor.MoveDirection.z);
+                    if (speed.magnitude <= 10)
+                        stateCurrent = StatesMoveHorse;
+                    else
+                        stateCurrent = StatesGallopHorse;
+                }
                 else
                 {
                     if (readyStance > 1)
@@ -772,7 +819,7 @@ public class PlayerBillboard : MonoBehaviour
         }
 
         if (stateLast != stateCurrent || (animating && isAnimating == null))
-            UpdateBillboard(frameCurrent, lastOrientation, stateCurrent);
+            UpdateBillboardDelayed(frameCurrent, lastOrientation, stateCurrent);
 
         if (isAnimating != null && !animating)
             animating = true;
@@ -865,6 +912,20 @@ public class PlayerBillboard : MonoBehaviour
             }
         }
 
+        if (EyeOfTheBeholder.Instance.hasFreeRein)
+        {
+            if (GameManager.Instance.PlayerMotor.IsRiding)
+                parentForward = EyeOfTheBeholder.Instance.FreeRein_GetMoveVector();
+        }
+
+        if (EyeOfTheBeholder.Instance.isSailing)
+        {
+            if (EyeOfTheBeholder.Instance.boatDriveObject != null)
+                parentForward = EyeOfTheBeholder.Instance.boatDriveObject.transform.forward;
+            else
+                parentForward = EyeOfTheBeholder.Instance.boatMeshObject.transform.forward;
+        }
+
         parentForward.y = 0;
 
         lastMoveDirection = parentForward;
@@ -876,25 +937,44 @@ public class PlayerBillboard : MonoBehaviour
         // Wrap values to 0 .. numberOrientations-1
         orientation = (orientation + numberOrientations) % numberOrientations;
 
-        if (FP)
-        {
-            if (orientation == 0)
-                orientation = 4;
-        }
-
         // Change enemy to this orientation
         if (orientation != lastOrientation || force || meshRenderer.material.mainTexture == null)
         {
-            UpdateBillboard(frameCurrent, orientation, stateCurrent);
+            UpdateBillboardDelayed(frameCurrent, orientation, stateCurrent);
         }
 
         if (torch != null)
         {
-            if (torchOffset > 0 && !FP)
-                torch.transform.position = transform.position + (Vector3.up * 0.45f) + (lastMoveDirection.normalized * 0.5f);
+            if (!FP)
+            {
+                if (torchOffset == 2)
+                {
+                    // Selfie mode
+                    Vector3 start = transform.parent.position + (Vector3.up * 0.9f);
+                    Vector3 end = GameManager.Instance.MainCameraObject.transform.position;
+                    torch.transform.position = start + ((end-start) * 0.5f);
+                }
+                else if (torchOffset == 1)
+                    torch.transform.position = transform.position + (Vector3.up * 0.45f) + (lastMoveDirection.normalized * 0.5f);
+            }
             /*else
                 torch.transform.localPosition = torchPosLocalDefault;*/
         }
+    }
+
+    //Use this when changing states
+    //Delay is to make sure stuff like collider height is properly set before updating the billboard
+    void UpdateBillboardDelayed(int frame, int orientation, PlayerBillboardState[] states)
+    {
+        StartCoroutine(UpdateBillboardDelayedCoroutine(frame, orientation, states));
+    }
+
+    IEnumerator UpdateBillboardDelayedCoroutine(int frame, int orientation, PlayerBillboardState[] states)
+    {
+        for (int i = 0; i < 3; i++)
+            yield return null;
+
+        UpdateBillboard(frame, orientation, states);
     }
 
     /// <summary>
@@ -907,11 +987,12 @@ public class PlayerBillboard : MonoBehaviour
         if (meshFilter == null)
             meshFilter = GetComponent<MeshFilter>();
 
-        bool flip = states[orientation].flipped;
+        bool flip = states[orientation].mirror;
 
         if (attackStrings == 1 || attackStrings == 3)
         {
-            if ((states == StatesIdle || states == StatesIdleLycan || states == StatesMove || states == StatesMoveMelee || states == StatesMoveSpell || states == StatesMoveLycan || states == StatesReadyMelee || states == StatesReadySpell || states == StatesReadyLycan || states == StatesAttackMelee || states == StatesAttackSpell || states == StatesAttackLycan) && (orientation == 0 || orientation == 4))
+            if ((states == StatesIdle || states == StatesIdleLycan || states == StatesMove || states == StatesMoveMelee || states == StatesMoveSpell || states == StatesMoveLycan || states == StatesIdleMelee || states == StatesIdleSpell || states == StatesIdleMeleeLycan || states == StatesAttackMelee || states == StatesAttackSpell || states == StatesAttackMeleeLycan) && (orientation == 0 || orientation == 4))
+            //if ((states == StatesIdle || states == StatesIdleLycan || states == StatesMove || states == StatesMoveMelee || states == StatesMoveSpell || states == StatesMoveLycan || states == StatesIdleMelee || states == StatesIdleSpell || states == StatesIdleMeleeLycan || states == StatesAttackMelee || states == StatesAttackSpell || states == StatesAttackMeleeLycan))
             {
                 if (mirrorCount % 2 != 0)
                     flip = !flip;
@@ -919,21 +1000,35 @@ public class PlayerBillboard : MonoBehaviour
         }
 
         // Assign imported texture
-        if (frame > states[orientation].length - 1)
-            frame = states[orientation].length - 1;
+        if (frame > states[orientation].frames.Count - 1)
+            frame = states[orientation].frames.Count - 1;
 
-        Rect rect = states[orientation].GetRect(frame,flip);
+        Rect rect = states[orientation].rect;
 
         Vector2 size = rect.size*sizeMod;
 
-        transform.localPosition = rect.position;
-
         // Set mesh scale for this state
         transform.localScale = new Vector3(size.x, size.y, 1);
+        //transform.localPosition = rect.position * (new Vector2(flipMod, 1)) + (Vector2.up * size.y * 0.5f) - (Vector2.up * GameManager.Instance.PlayerController.height * 0.5f);
+        if (GameManager.Instance.PlayerMotor.OnExteriorWater == PlayerMotor.OnExteriorWaterMethod.Swimming)
+            transform.localPosition = rect.position - (Vector2.up * size.y * 0.5f);
+        else if (GameManager.Instance.PlayerMotor.IsCrouching)
+            transform.localPosition = rect.position + (Vector2.up * size.y * 0.5f) - (Vector2.up * GameManager.Instance.PlayerController.height);
+        else
+            transform.localPosition = rect.position + (Vector2.up * size.y * 0.5f) - (Vector2.up * GameManager.Instance.PlayerController.height * 0.5f);
+
+
+        if (FP)
+        {
+            if ((visibility == 1 && !riding) || (visibility == 2 && riding))
+                flip = !flip;
+        }
+
+        //transform.localPosition = rect.position + (Vector2.up * size.y * 0.5f);
 
         // Update Record/Frame texture
         if (meshRenderer == null)
-            meshRenderer = GetComponent<MeshRenderer>();
+        meshRenderer = GetComponent<MeshRenderer>();
 
         meshRenderer.material.mainTexture = states[orientation].frames[frame];
 
@@ -943,6 +1038,7 @@ public class PlayerBillboard : MonoBehaviour
         Vector2[] uvs = new Vector2[4];
         if (flip)
         {
+            transform.localPosition *= new Vector2(-1, 1);
             uvs[0] = new Vector2(1, 1);
             uvs[1] = new Vector2(0, 1);
             uvs[2] = new Vector2(1, 0);
@@ -959,6 +1055,14 @@ public class PlayerBillboard : MonoBehaviour
 
         // Assign new orientation
         lastOrientation = orientation;
+
+        /*if (FP)
+            meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly;
+        else
+            meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.TwoSided;*/
+
+        if (FP && visibility > 0)
+            transform.localPosition = new Vector3(transform.localPosition.x, transform.localPosition.y, -0.25f);
     }
 
     /// <summary>
@@ -1016,6 +1120,7 @@ public class PlayerBillboard : MonoBehaviour
         meshRenderer.sharedMaterial = material;
         meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.TwoSided;
 
+
         shaderNormal = meshRenderer.sharedMaterial.shader;
         shaderGhost = Shader.Find(MaterialReader._DaggerfallGhostShaderName);
     }
@@ -1069,7 +1174,7 @@ public class PlayerBillboard : MonoBehaviour
             if (meshRenderer.sharedMaterial.shader != shaderNormal)
             {
                 meshRenderer.sharedMaterial.shader = shaderNormal;
-                meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+                meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.TwoSided;
             }
             if (lastColor.a != 1)
             {
@@ -1105,12 +1210,12 @@ public class PlayerBillboard : MonoBehaviour
 
         if (pingpong)
         {
-            speed = GetMeleeAnimTickTime((((StatesAttackMelee[lastOrientation].length/2)+pingpongOffset)*2)-1);
+            speed = GetMeleeAnimTickTime((((StatesAttackMelee[lastOrientation].frames.Count / 2)+pingpongOffset)*2)-1);
             isAnimating = PlayAnimationPingPongCoroutine(StatesAttackMelee, speed);
         }
         else
         {
-            speed = GetMeleeAnimTickTime(StatesAttackMelee[lastOrientation].length);
+            speed = GetMeleeAnimTickTime(StatesAttackMelee[lastOrientation].frames.Count);
             isAnimating = PlayAnimationCoroutine(StatesAttackMelee, speed);
         }
 
@@ -1156,7 +1261,7 @@ public class PlayerBillboard : MonoBehaviour
             isAnimating = null;
         }
 
-        isAnimating = PlayAnimationHoldCoroutine(StatesAttackRanged, GameManager.classicUpdateInterval * 2,InputManager.Actions.SwingWeapon,InputManager.Actions.ActivateCenterObject,10);
+        isAnimating = PlayAnimationHoldCoroutine(StatesAttackRanged, GameManager.classicUpdateInterval * 2,10);
 
         StartCoroutine(isAnimating);
     }
@@ -1194,7 +1299,7 @@ public class PlayerBillboard : MonoBehaviour
             isAnimating = null;
         }
 
-        isAnimating = PlayAnimationCoroutine(StatesAttackLycan, GameManager.classicUpdateInterval * 2);
+        isAnimating = PlayAnimationCoroutine(StatesAttackMeleeLycan, GameManager.classicUpdateInterval * 2);
 
         if (EyeOfTheBeholder.Instance != null)
             EyeOfTheBeholder.Instance.HasSwungWeapon = true;
@@ -1217,9 +1322,9 @@ public class PlayerBillboard : MonoBehaviour
         }
 
         if (GameManager.Instance.PlayerEffectManager.IsTransformedLycanthrope())
-            isAnimating = PlayAnimationCoroutine(StatesDeathLycan, GameManager.classicUpdateInterval * 4, true);
+            isAnimating = PlayAnimationCoroutine(StatesDeathLycan, GameManager.classicUpdateInterval * 8, true);
         else
-            isAnimating = PlayAnimationCoroutine(StatesDeath, GameManager.classicUpdateInterval * 4, true);
+            isAnimating = PlayAnimationCoroutine(StatesDeath, GameManager.classicUpdateInterval * 8, true);
 
 
         if (StatesAttackSpell.Length > 1)
@@ -1231,7 +1336,7 @@ public class PlayerBillboard : MonoBehaviour
     IEnumerator PlayAnimationCoroutine(PlayerBillboardState[] states, float interval, bool freeze = false)
     {
         int animFrameCurrent = 0;
-        while (animFrameCurrent < states[lastOrientation].length)
+        while (animFrameCurrent < states[lastOrientation].frames.Count)
         {
             UpdateBillboard(animFrameCurrent,lastOrientation,states);
             animFrameCurrent++;
@@ -1240,7 +1345,7 @@ public class PlayerBillboard : MonoBehaviour
 
         if (attackStrings == 1 || attackStrings == 3)
         {
-            if (states == StatesAttackMelee || states == StatesAttackLycan)
+            if (states == StatesAttackMelee || states == StatesAttackMeleeLycan)
             {
                 mirrorTimer = 0;
                 mirrorCount++;
@@ -1262,7 +1367,7 @@ public class PlayerBillboard : MonoBehaviour
     {
         int animFrameCurrent = 0;
 
-        while (animFrameCurrent < (states[lastOrientation].length/2)+pingpongOffset)
+        while (animFrameCurrent < (states[lastOrientation].frames.Count / 2)+pingpongOffset)
         {
             UpdateBillboard(animFrameCurrent, lastOrientation, states);
             animFrameCurrent++;
@@ -1287,9 +1392,9 @@ public class PlayerBillboard : MonoBehaviour
             UpdateOrientation(true);
     }
 
-    IEnumerator PlayAnimationHoldCoroutine(PlayerBillboardState[] states, float interval, InputManager.Actions actionTrigger, InputManager.Actions actionCancel, int maxDuration)
+    IEnumerator PlayAnimationHoldCoroutine(PlayerBillboardState[] states, float interval, int maxDuration)
     {
-        int animFrameCurrent = states[lastOrientation].length-1;
+        int animFrameCurrent = states[lastOrientation].frames.Count - 1;
         bool trigger = false;
 
         //play in reverse
@@ -1301,9 +1406,11 @@ public class PlayerBillboard : MonoBehaviour
                 yield return new WaitForSeconds(interval);
             }
 
-            if (InputManager.Instance.HasAction(actionTrigger))
+            if (((EyeOfTheBeholder.Instance.tomeOfBattleSwingKeyCode == KeyCode.None && InputManager.Instance.HasAction(InputManager.Actions.SwingWeapon)) ||
+                (EyeOfTheBeholder.Instance.tomeOfBattleSwingKeyCode != KeyCode.None && InputManager.Instance.GetKey(EyeOfTheBeholder.Instance.tomeOfBattleSwingKeyCode))
+                ))
             {
-                if (InputManager.Instance.HasAction(actionCancel))
+                if (InputManager.Instance.HasAction(InputManager.Actions.ActivateCenterObject))
                 {
                     isAnimating = null;
                     UpdateOrientation(true);
@@ -1324,7 +1431,7 @@ public class PlayerBillboard : MonoBehaviour
         animFrameCurrent = 0;
 
         //play normally
-        while (animFrameCurrent < states[lastOrientation].length)
+        while (animFrameCurrent < states[lastOrientation].frames.Count)
         {
             UpdateBillboard(animFrameCurrent, lastOrientation, states);
             animFrameCurrent++;
@@ -1394,11 +1501,14 @@ public class PlayerBillboard : MonoBehaviour
     {
         //this condition helps prevent making a nuisance footstep noise when the player first
         //loads a save, or into an interior or exterior location
-        /*if (GameManager.Instance.SaveLoadManager.LoadInProgress || GameManager.Instance.StreamingWorld.IsRepositioningPlayer)
+        if (GameManager.Instance.SaveLoadManager.LoadInProgress || GameManager.Instance.StreamingWorld.IsRepositioningPlayer)
         {
-            ignoreLostGrounding = true;
+            wasGrounded = true;
             return;
-        }*/
+        }
+
+        if (isTravelling)
+            return;
 
         AudioSource audioSource = GameManager.Instance.PlayerObject.GetComponent<AudioSource>();
         DaggerfallAudioSource dfAudioSource = GameManager.Instance.PlayerObject.GetComponent<DaggerfallAudioSource>();

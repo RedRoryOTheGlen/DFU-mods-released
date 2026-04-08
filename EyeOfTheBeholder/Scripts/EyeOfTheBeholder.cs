@@ -1,9 +1,11 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using DaggerfallWorkshop;
 using DaggerfallWorkshop.Utility;
 using DaggerfallWorkshop.Game;
+using DaggerfallWorkshop.Game.Utility;
 using DaggerfallWorkshop.Game.Utility.ModSupport;
 using DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings;
 using DaggerfallWorkshop.Game.Items;
@@ -14,10 +16,14 @@ public class EyeOfTheBeholder : MonoBehaviour
     public const string IS_IN_THIRD_PERSON = "isInThirdPerson";
     public const string ON_TOGGLE_OFFSET = "onToggleOffset";
 
+    //other mods
+    public const string HAS_FREE_REIN = "hasFreeRein";
+
     public static EyeOfTheBeholder Instance;
 
     Camera eye;
     Transform body;
+    FPSSpellCasting spellCasting;
 
     Transform torch = null;
     Vector3 torchPosLocalDefault;
@@ -58,7 +64,9 @@ public class EyeOfTheBeholder : MonoBehaviour
         {
             if (mirror)
             {
-                if (overrideMount && GameManager.Instance.PlayerMotor.IsRiding)
+                if (overrideBoat && isSailing)
+                    return new Vector3(-overrideBoatOffsetX, overrideBoatOffsetY, overrideBoatOffsetZ - offsetScroll);
+                else if (overrideMount && GameManager.Instance.PlayerMotor.IsRiding)
                     return new Vector3(-overrideMountOffsetX, overrideMountOffsetY, overrideMountOffsetZ - offsetScroll);
                 else if (overrideWeapon && (!GameManager.Instance.WeaponManager.Sheathed || GameManager.Instance.PlayerEffectManager.HasReadySpell))
                     return new Vector3(-overrideWeaponOffsetX, overrideWeaponOffsetY, overrideWeaponOffsetZ - offsetScroll);
@@ -67,7 +75,9 @@ public class EyeOfTheBeholder : MonoBehaviour
             }
             else
             {
-                if (overrideMount && GameManager.Instance.PlayerMotor.IsRiding)
+                if (overrideBoat && isSailing)
+                    return new Vector3(overrideBoatOffsetX, overrideBoatOffsetY, overrideBoatOffsetZ - offsetScroll);
+                else if (overrideMount && GameManager.Instance.PlayerMotor.IsRiding)
                     return new Vector3(overrideMountOffsetX, overrideMountOffsetY, overrideMountOffsetZ - offsetScroll);
                 else if (overrideWeapon && (!GameManager.Instance.WeaponManager.Sheathed || GameManager.Instance.PlayerEffectManager.HasReadySpell))
                     return new Vector3(overrideWeaponOffsetX, overrideWeaponOffsetY, overrideWeaponOffsetZ - offsetScroll);
@@ -103,7 +113,7 @@ public class EyeOfTheBeholder : MonoBehaviour
     }
 
     bool billboard;
-    bool firstpersonShadow;
+    int firstpersonBillboard;
     PlayerBillboard billboardPlayer;
     GameObject billboardObject;
 
@@ -165,7 +175,27 @@ public class EyeOfTheBeholder : MonoBehaviour
 
     bool debugMessages;
 
-    List<string> mods = new List<string>();
+    public event Action<bool> OnToggleOffset;
+
+    public bool hasFreeRein;
+    Mod FreeRein;
+
+    Mod ComeSailAway;
+    public bool isSailing;
+    public GameObject boatMeshObject;
+    public GameObject boatDriveObject;
+    public GameObject boatFlagObject;
+    Vector3 boatMeshObjectCenter;
+    float boatMeshObjectExtent;
+
+    public bool overrideBoat;
+    public float overrideBoatOffsetX;
+    public float overrideBoatOffsetY;
+    public float overrideBoatOffsetZ;
+    public int boatTarget;
+
+    public bool hasTravelOptions;
+    public KeyCode tomeOfBattleSwingKeyCode = KeyCode.None;
 
     static Mod mod;
     [Invoke(StateManager.StateTypes.Start, 0)]
@@ -177,15 +207,25 @@ public class EyeOfTheBeholder : MonoBehaviour
         go.AddComponent<EyeOfTheBeholder>();
     }
 
-    void Awake()
+    private void Awake()
     {
         if (Instance == null)
             Instance = this;
+
+        mod.MessageReceiver = MessageReceiver;
+        mod.IsReady = true;
+    }
+
+    void Start()
+    {
+        ModCompatibilityChecking();
 
         eye = GameManager.Instance.MainCamera;
         posLocalDefault = eye.transform.localPosition;
 
         body = GameManager.Instance.MainCamera.transform.parent;
+
+        spellCasting = GameManager.Instance.PlayerSpellCasting;
 
         torch = GameManager.Instance.PlayerObject.GetComponent<EnablePlayerTorch>().PlayerTorch.transform;
         torchPosLocalDefault = torch.localPosition;
@@ -208,15 +248,111 @@ public class EyeOfTheBeholder : MonoBehaviour
         offset = offsetDefault;
         ToggleOffset(offset);
 
-        mod.MessageReceiver = MessageReceiver;
-        mod.IsReady = true;
-
         SaveLoadManager.OnLoad += OnLoad;
+        StartGameBehaviour.OnNewGame += OnNewGame;
 
         PlayerEnterExit.OnTransitionInterior += OnTransitionInterior;
         PlayerEnterExit.OnTransitionDungeonInterior += OnTransitionInterior;
         PlayerEnterExit.OnTransitionExterior += OnTransitionExterior;
         PlayerEnterExit.OnTransitionDungeonExterior += OnTransitionExterior;
+        FloatingOrigin.OnPositionUpdate += OnPositionUpdate;
+
+        /*GameManager.Instance.WeatherManager.PlayerWeather.RainParticles.transform.SetParent(GameManager.Instance.MainCameraObject.transform);
+        GameManager.Instance.WeatherManager.PlayerWeather.SnowParticles.transform.SetParent(GameManager.Instance.MainCameraObject.transform);*/
+    }
+    private void ModCompatibilityChecking()
+    {
+        /*//Check for Realistic Wagon mod
+        Mod realisticWagon = ModManager.Instance.GetModFromGUID("a30d1974-4d5d-477b-91c0-83f7f4bbd64b");
+        hasRealisticWagon = realisticWagon != null ? true : false;*/
+
+        Mod travelOptions = ModManager.Instance.GetModFromGUID("93f3ad1c-83cc-40ac-b762-96d2f47f2e05");
+        hasTravelOptions = travelOptions != null ? true : false;
+
+        //check if Tome of Battle is installed
+        Mod tob = ModManager.Instance.GetModFromGUID("a166c215-0a5a-4582-8bf3-8be8df80d5e5");
+        if (tob != null)
+        {
+            ModManager.Instance.SendModMessage(tob.Title, "getSwingKeyCode", null, (string message, object data) =>
+            {
+                tomeOfBattleSwingKeyCode = (KeyCode)data;
+            });
+        }
+
+        ComeSailAway = ModManager.Instance.GetModFromGUID("dbe3e8ff-9059-45f1-a8be-732bb6000df7");
+        if (ComeSailAway != null)
+        {
+            ModManager.Instance.SendModMessage(ComeSailAway.Title, "OnUpdateSailing", (Action<bool>)OnUpdateSailing);
+        }
+    }
+
+    public void OnUpdateSailing(bool value)
+    {
+        isSailing = value;
+
+        if (isSailing)
+        {
+            Debug.Log("EYE OF THE BEHOLDER - WE ARE NOW SAILING!");
+            boatFlagObject = null;
+            boatDriveObject = null;
+
+            ModManager.Instance.SendModMessage(ComeSailAway.Title, "GetBoatMeshObject", null, (string message, object data) =>
+            {
+                boatMeshObject = (GameObject)data;
+            });
+
+            Bounds boatMeshObjectBounds = boatMeshObject.GetComponentInChildren<MeshCollider>().bounds;
+            boatMeshObjectCenter = boatMeshObject.transform.InverseTransformVector(boatMeshObjectBounds.center - boatMeshObject.transform.position);
+            Vector3 e = boatMeshObjectBounds.extents;
+            boatMeshObjectExtent = Mathf.Max(Mathf.Max(Mathf.Abs(e.x), Mathf.Abs(e.y)), Mathf.Abs(e.z));
+
+            for (int i = 0; i < boatMeshObject.transform.childCount; i++)
+            {
+                if (boatFlagObject != null && boatDriveObject != null)
+                    break;
+
+                Transform child = boatMeshObject.transform.GetChild(i);
+                if (child.name == "FlagObject")
+                {
+                    boatFlagObject = child.gameObject;
+                }
+
+                if (child.name == "DrivePosition")
+                {
+                    boatDriveObject = child.gameObject;
+                }
+            }
+
+            if (boatFlagObject == null)
+                boatFlagObject = boatMeshObject;
+        }
+        else
+        {
+            Debug.Log("EYE OF THE BEHOLDER - WE HAVE STOPPED SAILING!");
+        }
+    }
+
+    public static void OnNewGame()
+    {
+        if (Instance.autoPOVSwitch)
+        {
+            if (GameManager.Instance.PlayerEnterExit.IsPlayerInside)
+            {
+                if (Instance.autoPOVOnTransitionInterior == 2 && !Instance.offset)
+                    Instance.ToggleOffset(true);
+                else if (Instance.autoPOVOnTransitionInterior == 1 && Instance.offset)
+                    Instance.ToggleOffset(false);
+            }
+            else
+            {
+                if (Instance.autoPOVOnTransitionExterior == 2 && !Instance.offset)
+                    Instance.ToggleOffset(true);
+                else if (Instance.autoPOVOnTransitionExterior == 1 && Instance.offset)
+                    Instance.ToggleOffset(false);
+            }
+        }
+        else
+            Instance.ToggleOffset(Instance.offsetDefault);
     }
 
     public static void OnLoad(SaveData_v1 saveData)
@@ -273,6 +409,14 @@ public class EyeOfTheBeholder : MonoBehaviour
             overrideMountOffsetY = settings.GetTupleFloat("CameraOverrideMount", "FrontalPlaneOffset").Second;
             overrideMountOffsetZ = settings.GetValue<float>("CameraOverrideMount", "LongitudinalDistance") * -1;
         }
+        if (change.HasChanged("CameraOverrideBoat"))
+        {
+            overrideBoat = settings.GetValue<bool>("CameraOverrideBoat", "Enable");
+            overrideBoatOffsetX = settings.GetTupleFloat("CameraOverrideBoat", "FrontalPlaneOffset").First;
+            overrideBoatOffsetY = settings.GetTupleFloat("CameraOverrideBoat", "FrontalPlaneOffset").Second;
+            overrideBoatOffsetZ = settings.GetValue<float>("CameraOverrideBoat", "LongitudinalDistance") * -1;
+            boatTarget = settings.GetValue<int>("CameraOverrideBoat", "Target");
+        }
         if (change.HasChanged("CameraScrolling"))
         {
             scrollableOffset = settings.GetValue<bool>("CameraScrolling", "ScrollableZOffset");
@@ -290,7 +434,7 @@ public class EyeOfTheBeholder : MonoBehaviour
             combo = settings.GetValue<int>("Graphics", "AttackStrings");
             comboTime = settings.GetValue<float>("Graphics", "MirrorTime");
             comboOffset = settings.GetValue<int>("Graphics", "PingPongOffset");
-            firstpersonShadow = settings.GetValue<bool>("Graphics", "FirstPersonShadow");
+            firstpersonBillboard = settings.GetValue<int>("Graphics", "FirstPersonBillboard");
             wagon = settings.GetValue<bool>("Graphics", "ShowCart");
             torchFollow = settings.GetValue<int>("Graphics", "TorchOffset");
         }
@@ -302,35 +446,6 @@ public class EyeOfTheBeholder : MonoBehaviour
                 billboardPlayer.walkAnimSpeedMod = settings.GetValue<float>("Animation", "WalkCycleSpeed");
 
                 billboardPlayer.lengthsChanged = true;
-                billboardPlayer.StatesIdleLength = settings.GetValue<int>("Animation", "FootIdleLength");
-                billboardPlayer.StatesReadyMeleeLength = settings.GetValue<int>("Animation", "FootReadyMeleeLength");
-                billboardPlayer.StatesReadyRangedLength = settings.GetValue<int>("Animation", "FootReadyRangedLength");
-                billboardPlayer.StatesReadySpellLength = settings.GetValue<int>("Animation", "FootReadySpellLength");
-                billboardPlayer.StatesMoveLength = settings.GetValue<int>("Animation", "FootMoveLength");
-                billboardPlayer.StatesAttackMeleeLength = settings.GetValue<int>("Animation", "FootAttackMeleeLength");
-                billboardPlayer.StatesAttackRangedLength = settings.GetValue<int>("Animation", "FootAttackRangedLength");
-                billboardPlayer.StatesAttackSpellLength = settings.GetValue<int>("Animation", "FootAttackSpellLength");
-                billboardPlayer.StatesDeathLength = settings.GetValue<int>("Animation", "FootDeathLength");
-                billboardPlayer.StatesIdleHorseLength = settings.GetValue<int>("Animation", "HorseIdleLength");
-                billboardPlayer.StatesMoveHorseLength = settings.GetValue<int>("Animation", "HorseMoveLength");
-                billboardPlayer.StatesIdleLycanLength = settings.GetValue<int>("Animation", "LycanIdleLength");
-                billboardPlayer.StatesReadyLycanLength = settings.GetValue<int>("Animation", "LycanReadyLength");
-                billboardPlayer.StatesMoveLycanLength = settings.GetValue<int>("Animation", "LycanMoveLength");
-                billboardPlayer.StatesAttackLycanLength = settings.GetValue<int>("Animation", "LycanAttackLength");
-                billboardPlayer.StatesDeathLycanLength = settings.GetValue<int>("Animation", "LycanDeathLength");
-
-                billboardPlayer.StatesIdleOffset = new Vector2(settings.GetTupleFloat("Animation", "FootIdleOffset").First, settings.GetTupleFloat("Animation", "FootIdleOffset").Second);
-                billboardPlayer.StatesMoveOffset = new Vector2(settings.GetTupleFloat("Animation", "FootMoveOffset").First, settings.GetTupleFloat("Animation", "FootMoveOffset").Second);
-                billboardPlayer.StatesAttackMeleeOffset = new Vector2(settings.GetTupleFloat("Animation", "FootAttackMeleeOffset").First, settings.GetTupleFloat("Animation", "FootAttackMeleeOffset").Second);
-                billboardPlayer.StatesAttackRangedOffset = new Vector2(settings.GetTupleFloat("Animation", "FootAttackRangedOffset").First, settings.GetTupleFloat("Animation", "FootAttackRangedOffset").Second);
-                billboardPlayer.StatesAttackSpellOffset = new Vector2(settings.GetTupleFloat("Animation", "FootAttackSpellOffset").First, settings.GetTupleFloat("Animation", "FootAttackSpellOffset").Second);
-                billboardPlayer.StatesDeathOffset = new Vector2(settings.GetTupleFloat("Animation", "FootDeathOffset").First, settings.GetTupleFloat("Animation", "FootDeathOffset").Second);
-                billboardPlayer.StatesIdleHorseOffset = new Vector2(settings.GetTupleFloat("Animation", "HorseIdleOffset").First, settings.GetTupleFloat("Animation", "HorseIdleOffset").Second);
-                billboardPlayer.StatesMoveHorseOffset = new Vector2(settings.GetTupleFloat("Animation", "HorseMoveOffset").First, settings.GetTupleFloat("Animation", "HorseMoveOffset").Second);
-                billboardPlayer.StatesIdleLycanOffset = new Vector2(settings.GetTupleFloat("Animation", "LycanIdleOffset").First, settings.GetTupleFloat("Animation", "LycanIdleOffset").Second);
-                billboardPlayer.StatesMoveLycanOffset = new Vector2(settings.GetTupleFloat("Animation", "LycanMoveOffset").First, settings.GetTupleFloat("Animation", "LycanMoveOffset").Second);
-                billboardPlayer.StatesAttackLycanOffset = new Vector2(settings.GetTupleFloat("Animation", "LycanAttackOffset").First, settings.GetTupleFloat("Animation", "LycanAttackOffset").Second);
-                billboardPlayer.StatesDeathLycanOffset = new Vector2(settings.GetTupleFloat("Animation", "LycanDeathOffset").First, settings.GetTupleFloat("Animation", "LycanDeathOffset").Second);
                 sizeOffset = settings.GetValue<float>("Animation", "GlobalOffsetScale") + (settings.GetValue<float>("Animation", "FineGlobalOffsetScale") * 0.1f);
                 size = settings.GetValue<float>("Animation", "BillboardScale")+(settings.GetValue<float>("Animation", "FineBillboardScale") * 0.1f);
             }
@@ -381,8 +496,12 @@ public class EyeOfTheBeholder : MonoBehaviour
                 callBack?.Invoke(IS_IN_THIRD_PERSON, offset);
                 break;
 
+            case HAS_FREE_REIN:
+                hasFreeRein = true;
+                break;
+
             case ON_TOGGLE_OFFSET:
-                mods.Add((string)data);
+                OnToggleOffset += data as Action<bool>;
                 break;
 
             default:
@@ -417,27 +536,21 @@ public class EyeOfTheBeholder : MonoBehaviour
             return;
         }
 
-        if (Vector3.Distance(body.transform.position, posCurrent) > 15)
-            posCurrent = eye.transform.position;
+        /*if (Vector3.Distance(body.transform.position, posCurrent) > 205)
+            posCurrent = eye.transform.position;*/
 
         if (scrollableOffset)
         {
 
             if (Input.GetAxis(scrollableOffsetAxis) > 0)
-            {
-                //if (currentScroll >= minimumScroll && scrollableOffsetTogglePOV)
-                if (currentScroll >= minimumScroll)
-                    ToggleOffset(false);
-                else
-                    offsetScroll -= scrollableIncrement;
-            }
+                offsetScroll -= scrollableIncrement;
             else if (Input.GetAxis(scrollableOffsetAxis) < 0)
                 offsetScroll += scrollableIncrement;
 
             if (currentScroll < -10)
                 offsetScroll = 10 + (posOffset.z+offsetScroll);
             else if (currentScroll > minimumScroll)
-                offsetScroll = -minimumScroll + (posOffset.z + offsetScroll);
+                ToggleOffset(false);
 
             //Debug.Log("CURRENT SCROLL VALUE IS " + currentScroll.ToString() + " AND MINIMUM SCROLL VALUE IS " + minimumScroll.ToString());
         }
@@ -522,7 +635,7 @@ public class EyeOfTheBeholder : MonoBehaviour
 
                     Ray ray = new Ray(originX, dir);
                     RaycastHit hit = new RaycastHit();
-                    if (Physics.Raycast(ray, out hit, Mathf.Abs(posOffset.x * 2f) + eyeRadius, layerMask))
+                    if (Physics.Raycast(ray, out hit, Mathf.Abs(posOffset.x * 2f) + eyeRadius, layerMask, QueryTriggerInteraction.Ignore))
                     {
                         if (hit.distance < (Mathf.Abs(posOffset.x) / 2) + eyeRadius)
                             mirrorTimer = 0;
@@ -541,7 +654,19 @@ public class EyeOfTheBeholder : MonoBehaviour
 
         CheckBounds();
 
-        posTarget = body.transform.position + body.TransformVector(posLocalDefault) + eye.transform.TransformVector(SetVectorBounds(posOffset));
+        if (isSailing && overrideBoat)
+        {
+            if (boatTarget == 1)
+            {
+                posTarget = boatFlagObject.transform.position + eye.transform.TransformVector(SetVectorBounds(posOffset) * boatMeshObjectExtent);
+            }
+            else
+            {
+                posTarget = boatMeshObject.transform.position + boatMeshObjectCenter + eye.transform.TransformVector(SetVectorBounds(posOffset) * boatMeshObjectExtent);
+            }
+        }
+        else
+            posTarget = body.transform.position + body.TransformVector(posLocalDefault) + eye.transform.TransformVector(SetVectorBounds(posOffset));
 
         /*float pitch = GameManager.Instance.PlayerMouseLook.Pitch / 90;
         Vector3 posOffsetPitched = posOffset;
@@ -778,6 +903,11 @@ public class EyeOfTheBeholder : MonoBehaviour
             GameManager.Instance.WeaponManager.ScreenWeapon.ShowWeapon = false;
     }
 
+    void OnPositionUpdate(Vector3 offset)
+    {
+        posCurrent = eye.transform.position;
+    }
+
     public static void OnTransitionInterior(PlayerEnterExit.TransitionEventArgs args)
     {
         if (Instance.autoPOVSwitch)
@@ -803,6 +933,7 @@ public class EyeOfTheBeholder : MonoBehaviour
     void SpawnBillboard()
     {
         billboardObject = Instantiate(new GameObject("PlayerBillboard"));
+        billboardObject.SetActive(false);
         billboardObject.AddComponent<MeshRenderer>();
         billboardObject.AddComponent<MeshFilter>();
         billboardObject.transform.SetParent(GameManager.Instance.PlayerObject.transform.GetChild(0));
@@ -814,12 +945,37 @@ public class EyeOfTheBeholder : MonoBehaviour
 
     void SpawnWagon()
     {
-        wagonObject = GameObjectHelper.CreateDaggerfallMeshGameObject(41241, null);
+        wagonObject = GameObjectHelper.CreateDaggerfallMeshGameObject(41239, null);
         wagonOffsetLast = Vector3.forward * -2.5f;
         wagonObject.GetComponent<MeshCollider>().enabled = false;
+
+        MeshRenderer mesh = wagonObject.GetComponent<MeshRenderer>();
+        BoxCollider box = wagonObject.AddComponent<BoxCollider>();
+        box.isTrigger = true;
+        box.bounds.Encapsulate(mesh.bounds);
+
+        /*Material[] materials = mesh.materials;
+        for (int i = 0; i < materials.Length; i++)
+        {
+            if (materials[i].name == "TEXTURE.088 [Index=2] (Instance)")
+            {
+                Material newMaterial = DaggerfallUnity.Instance.MaterialReader.GetMaterial(090, 5);
+                materials[i] = newMaterial;
+                mesh.materials = materials;
+            }
+            if (materials[i].name == "TEXTURE.088 [Index=3] (Instance)")
+            {
+                Material newMaterial = DaggerfallUnity.Instance.MaterialReader.GetMaterial(090, 7);
+                materials[i] = newMaterial;
+                mesh.materials = materials;
+            }
+        }*/
+
         wagonObject.SetActive(false);
 
         wagonLayerMask |= (1 << LayerMask.NameToLayer("Default"));
+
+        PlayerActivate.RegisterCustomActivation(mod, 41239, CheckWagon);
     }
 
     void UpdateWagon()
@@ -838,7 +994,10 @@ public class EyeOfTheBeholder : MonoBehaviour
         if (GameManager.Instance.TransportManager.TransportMode == TransportModes.Cart)
         {
             if (!wagonObject.activeSelf)
+            {
                 wagonObject.SetActive(true);
+                wagonObject.transform.position = body.transform.position - (body.transform.forward * 10);
+            }
 
             bool updatePos = false;
             bool originShifted = false;
@@ -863,7 +1022,7 @@ public class EyeOfTheBeholder : MonoBehaviour
                 //set wagon on ground
                 Ray ray = new Ray(wagonObject.transform.position - wagonObject.transform.TransformPoint(Vector3.forward * 0.6f) + newPos + (Vector3.up*2f), Vector3.down);
                 RaycastHit hit = new RaycastHit();
-                if (Physics.Raycast(ray, out hit, 10f, wagonLayerMask))
+                if (Physics.Raycast(ray, out hit, 10f, wagonLayerMask, QueryTriggerInteraction.Ignore))
                 {
                     Vector3 groundedPos = new Vector3(newPos.x, hit.point.y+1f, newPos.z);
                     newPos = body.transform.position - ((body.transform.position - groundedPos).normalized * 2.49f);
@@ -901,6 +1060,25 @@ public class EyeOfTheBeholder : MonoBehaviour
         }
     }
 
+    public static void CheckWagon(RaycastHit hit)
+    {
+        int hitID = hit.transform.gameObject.GetInstanceID();
+
+        if (hitID == Instance.wagonObject.GetInstanceID())
+        {
+            //hit the EOTB wagon gameobject while riding
+            if (GameManager.Instance.PlayerActivate.CurrentMode == PlayerActivateModes.Info)
+            {
+                DaggerfallUI.AddHUDText("You see your wagon");
+            }
+            else
+            {
+                DaggerfallUI.Instance.InventoryWindow.AllowDungeonWagonAccess();
+                DaggerfallUI.PostMessage(DaggerfallUIMessages.dfuiOpenInventoryWindow);
+            }
+        }
+    }
+
     public void ToggleOffset(bool state)
     {
         if (state)
@@ -908,20 +1086,22 @@ public class EyeOfTheBeholder : MonoBehaviour
             offsetScroll = 0;
             posCurrent = eye.transform.position;
             ToggleBillboard(billboard);
-            if (firstpersonShadow)
+            if (firstpersonBillboard > 0)
                 billboardPlayer.FP = false;
+            spellCasting.enabled = false;
         }
         else
         {
             torch.localPosition = torchPosLocalDefault;
             eye.transform.localPosition = posLocalDefault;
-            if (firstpersonShadow)
+            if (firstpersonBillboard > 0)
             {
                 billboardPlayer.FP = true;
                 ToggleBillboard(billboard);
             }
             else
                 ToggleBillboard(false);
+            spellCasting.enabled = true;
         }
 
         if (!hideHorse)
@@ -929,14 +1109,8 @@ public class EyeOfTheBeholder : MonoBehaviour
 
         offset = state;
 
-        if (mods.Count > 0)
-            UpdateMods(offset);
-    }
-
-    void UpdateMods(bool state)
-    {
-        foreach (string mod in mods)
-            ModManager.Instance.SendModMessage(mod, "onToggleOffset", offset, null);
+        if (OnToggleOffset != null)
+            OnToggleOffset(offset);
     }
 
     void ToggleBillboard(bool state)
@@ -946,7 +1120,7 @@ public class EyeOfTheBeholder : MonoBehaviour
         billboardObject.SetActive(state);
 
         if (state)
-            billboardPlayer.Initialize(indexFoot, indexHorse, size, sizeOffset, readyStance, turnToView, combo, comboTime, comboOffset, torchFollow);
+            billboardPlayer.Initialize(indexFoot, indexHorse, size, sizeOffset, readyStance, turnToView, combo, comboTime, comboOffset, firstpersonBillboard, torchFollow);
     }
 
     void CheckBounds()
@@ -963,8 +1137,8 @@ public class EyeOfTheBeholder : MonoBehaviour
             Ray ray = new Ray(posLocal, dir);
             RaycastHit hit = new RaycastHit();
             float maxDistance = Mathf.Abs(posOffset.x * 2f) + eyeRadius;
-            Debug.DrawRay(ray.origin, ray.direction * maxDistance, Color.red, 1f, false);
-            if (Physics.Raycast(ray, out hit, maxDistance, layerMask))
+            //Debug.DrawRay(ray.origin, ray.direction * maxDistance, Color.red, 1f, false);
+            if (Physics.Raycast(ray, out hit, maxDistance, layerMask, QueryTriggerInteraction.Ignore))
                 boundsX = hit.distance - (eyeRadius*2);
             else
                 boundsX = maxDistance;
@@ -990,8 +1164,8 @@ public class EyeOfTheBeholder : MonoBehaviour
             Ray ray = new Ray(posLocal, dir);
             RaycastHit hit = new RaycastHit();
             float maxDistance = Mathf.Abs(posOffset.y * 2f) + eyeRadius;
-            Debug.DrawRay(ray.origin, ray.direction * maxDistance, Color.green, 1f, false);
-            if (Physics.Raycast(ray, out hit, maxDistance, layerMask))
+            //Debug.DrawRay(ray.origin, ray.direction * maxDistance, Color.green, 1f, false);
+            if (Physics.Raycast(ray, out hit, maxDistance, layerMask, QueryTriggerInteraction.Ignore))
                 boundsY = hit.distance - (eyeRadius * 2);
             else
                 boundsY = maxDistance;
@@ -1007,8 +1181,8 @@ public class EyeOfTheBeholder : MonoBehaviour
             Ray ray = new Ray(posLocal, dir);
             RaycastHit hit = new RaycastHit();
             float maxDistance = Mathf.Abs(posOffset.z * 2f) + eyeRadius;
-            Debug.DrawRay(ray.origin, ray.direction * maxDistance, Color.blue, 1f, false);
-            if (Physics.Raycast(ray, out hit, maxDistance, layerMask))
+            //Debug.DrawRay(ray.origin, ray.direction * maxDistance, Color.blue, 1f, false);
+            if (Physics.Raycast(ray, out hit, maxDistance, layerMask, QueryTriggerInteraction.Ignore))
                 boundsZ = hit.distance - (eyeRadius * 2);
             else
                 boundsZ = maxDistance;
@@ -1073,7 +1247,7 @@ public class EyeOfTheBeholder : MonoBehaviour
         // Fire ray along player facing using weapon range
         RaycastHit hit;
         Ray ray = new Ray(body.TransformPoint(posLocalDefault), eye.transform.forward);
-        Debug.DrawLine(ray.origin, ray.origin + (ray.direction * weapon.Reach), Color.green, 1f, false);
+        //Debug.DrawLine(ray.origin, ray.origin + (ray.direction * weapon.Reach), Color.green, 1f, false);
         if (Physics.SphereCast(ray, 0.25f, out hit, weapon.Reach, playerLayerMask))
         {
             DaggerfallUnityItem strikingWeapon = GameManager.Instance.WeaponManager.ScreenWeapon.SpecificWeapon;
@@ -1084,5 +1258,23 @@ public class EyeOfTheBeholder : MonoBehaviour
                 hitEnemy = GameManager.Instance.WeaponManager.WeaponDamage(strikingWeapon, false, false, hit.transform, hit.point, ray.direction);
             }
         }
+    }
+
+    public Vector3 FreeRein_GetMoveVector()
+    {
+        if (FreeRein == null)
+            FreeRein = ModManager.Instance.GetModFromGUID("c01eeb80-b41f-477b-a5ba-e0bfbc68637f");
+        Vector3 moveVector = Vector3.zero;
+
+
+        if (FreeRein != null)
+        {
+            ModManager.Instance.SendModMessage(FreeRein.Title, "getMoveVector", null, (string message, object data) =>
+            {
+                moveVector = (Vector3)data;
+            });
+        }
+
+        return moveVector;
     }
 }

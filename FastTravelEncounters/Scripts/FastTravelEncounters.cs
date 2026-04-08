@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using System.Reflection;
 using System.Collections;
 using System.Collections.Generic;
@@ -20,6 +19,7 @@ using DaggerfallConnect;
 using DaggerfallConnect.Arena2;
 using DaggerfallConnect.Utility;
 using Monobelisk.Compatibility;
+using Wenzil.Console;
 
 namespace FastTravelEncounters
 {
@@ -115,6 +115,13 @@ namespace FastTravelEncounters
         public Mod WarmAshesShips;
         public Mod DaggerfallEnemyExpansion;
 
+        //horse and wagon mod handling
+        public Mod RealisticWagon;
+        GameObject RealisticWagonGameObject;
+
+        public Mod RPGHorses;
+        TransportModes lastTransportMode;
+
         //0 = Vanilla, 1 = Warm Ashes, 2 = Vanilla + Warm Ashes
         int encounterPool = 0;
 
@@ -147,7 +154,9 @@ namespace FastTravelEncounters
             }
         }
 
-        void Awake()
+        public bool hasResidences;
+
+        void Start()
         {
             Instance = this;
 
@@ -158,10 +167,10 @@ namespace FastTravelEncounters
 
             DaggerfallUI.UIManager.OnWindowChange += OnWindowChange;
 
-            PlayerEnterExit.OnPreTransition += OnTransition;
-            PlayerEnterExit.OnTransitionExterior += OnTransition;
-            PlayerEnterExit.OnTransitionDungeonInterior += OnTransition;
-            PlayerEnterExit.OnTransitionDungeonExterior += OnTransition;
+            PlayerEnterExit.OnPreTransition += OnTransition_PreTransition;
+            PlayerEnterExit.OnTransitionExterior += OnTransition_Exterior;
+            PlayerEnterExit.OnTransitionDungeonInterior += OnTransition_DungeonInterior;
+            PlayerEnterExit.OnTransitionDungeonExterior += OnTransition_DungeonExterior;
 
             SaveLoadManager.OnLoad += OnLoad;
             StartGameBehaviour.OnNewGame += OnNewGame;
@@ -233,6 +242,19 @@ namespace FastTravelEncounters
             DaggerfallEnemyExpansion = ModManager.Instance.GetModFromGUID("76557441-7025-402e-a145-e3e1a28a093d");
 
             ClimatesAndCalories = ModManager.Instance.GetModFromGUID("7975b109-1381-485b-bdfd-8d076bb5d0c9");
+
+            RealisticWagon = ModManager.Instance.GetModFromGUID("a30d1974-4d5d-477b-91c0-83f7f4bbd64b");
+            if (RealisticWagon != null)
+                RealisticWagonGameObject = GameObject.Find("Realistic Wagon");
+
+            RPGHorses = ModManager.Instance.GetModFromGUID("cf01ae31-124f-4b9b-b830-fd43a1847dc0");
+
+            Mod BeautifulCities = ModManager.Instance.GetModFromGUID("9827d938-f296-461f-b9c1-b4963cbb0e6b");
+            Mod BeautifulVillages = ModManager.Instance.GetModFromGUID("b2324db6-7557-499a-aa25-d5e99014331d");
+            Mod DIEPResidences = ModManager.Instance.GetModFromGUID("7d449ed9-f8f8-4d3b-99f8-01563df7bb5e");
+
+            if (DIEPResidences != null || (BeautifulCities != null && BeautifulVillages != null))
+                hasResidences = true;
         }
 
         private void LoadSettings(ModSettings settings, ModSettingsChange change)
@@ -293,7 +315,7 @@ namespace FastTravelEncounters
 
         private void OnGUI()
         {
-            if (fade)
+            if (fade && !GameManager.IsGamePaused)
             {
                 GUI.depth = -20;
                 DaggerfallUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), fadeTexture);
@@ -314,14 +336,26 @@ namespace FastTravelEncounters
                 DaggerfallUI.Instance.FadeBehaviour.SmashHUDToBlack();
                 DaggerfallUI.Instance.FadeBehaviour.AllowFade = false;
 
+                if (RealisticWagonGameObject != null)
+                    RealisticWagonGameObject.SetActive(false);
+
+                TransportModes currentTransportMode = transportManager.TransportMode;
+                bool mounted = currentTransportMode == TransportModes.Horse || currentTransportMode == TransportModes.Cart ? true : false;
+
                 if (transportManager.IsOnShip())
                     transportManager.TransportMode = TransportModes.Ship;
 
                 yield return new WaitForSecondsRealtime(0.5f);
 
+                if (mounted && transportManager.TransportMode != currentTransportMode)
+                    transportManager.TransportMode = currentTransportMode;
+
                 ConfiscateTemporaryShip();
 
                 yield return new WaitForSecondsRealtime(0.1f);
+
+                /*if (RealisticWagonGameObject != null)
+                    RealisticWagonGameObject.SetActive(true);*/
             }
 
             EndPos.SetValue(travelPopUp, lastDestinationPosition);
@@ -350,6 +384,9 @@ namespace FastTravelEncounters
                 {
                     AssignTemporaryShip();
 
+                    if (RealisticWagonGameObject != null)
+                        RealisticWagonGameObject.SetActive(false);
+
                     yield return new WaitForSecondsRealtime(0.2f);
 
                     if (!transportManager.IsOnShip())
@@ -359,6 +396,9 @@ namespace FastTravelEncounters
 
 
                     yield return new WaitForSecondsRealtime(0.5f);
+
+                    /*if (RealisticWagonGameObject != null)
+                        RealisticWagonGameObject.SetActive(true);*/
                 }
             }
 
@@ -445,7 +485,25 @@ namespace FastTravelEncounters
             }
         }
 
-        public static void OnTransition(PlayerEnterExit.TransitionEventArgs args)
+        public static void OnTransition_PreTransition(PlayerEnterExit.TransitionEventArgs args)
+        {
+            Instance.ClearSpawnedObjects();
+        }
+
+        public static void OnTransition_Exterior(PlayerEnterExit.TransitionEventArgs args)
+        {
+            Instance.ClearSpawnedObjects();
+
+            if (Instance.lastTransportMode != TransportModes.Foot && GameManager.Instance.TransportManager.TransportMode == TransportModes.Foot && Instance.lastDestination != null)
+                Instance.RescueHorseAndCart();
+        }
+
+        public static void OnTransition_DungeonInterior(PlayerEnterExit.TransitionEventArgs args)
+        {
+            Instance.ClearSpawnedObjects();
+        }
+
+        public static void OnTransition_DungeonExterior(PlayerEnterExit.TransitionEventArgs args)
         {
             Instance.ClearSpawnedObjects();
         }
@@ -463,6 +521,9 @@ namespace FastTravelEncounters
 
         void DaggerfallTravelPopUp_OnPreFastTravel(DaggerfallTravelPopUp daggerfallTravelPopUp)
         {
+            if (GameManager.Instance.TransportManager.TransportMode != TransportModes.Ship)
+                lastTransportMode = GameManager.Instance.TransportManager.TransportMode;
+
             if (travelPopUp == null)
             {
                 travelPopUp = daggerfallTravelPopUp;
@@ -536,7 +597,40 @@ namespace FastTravelEncounters
                 if (shipTemporary)
                     ConfiscateTemporaryShip();
 
+                if (RealisticWagonGameObject != null)
+                    RealisticWagonGameObject.SetActive(true);
+
+                RescueHorseAndCart();
             }
+        }
+
+        void RescueHorseAndCart()
+        {
+            if (lastTransportMode != TransportModes.Foot && GameManager.Instance.TransportManager.TransportMode == TransportModes.Foot && !GameManager.Instance.PlayerEnterExit.IsPlayerInside && !GameManager.Instance.TransportManager.IsOnShip())
+                StartCoroutine(RescueHorseAndCartCoroutine());
+        }
+
+        IEnumerator RescueHorseAndCartCoroutine()
+        {
+            Debug.Log("FAST TRAVEL ENCOUNTERS - RUNNING RESCUE HORSE CODE!");
+
+            yield return new WaitForSeconds(1);
+
+            if (RealisticWagon != null)
+            {
+                if (!GameManager.Instance.TransportManager.HasHorse())
+                    Wenzil.Console.Console.ExecuteCommand("horse_rescue");
+
+                yield return new WaitForEndOfFrame();
+
+                if (lastTransportMode == TransportModes.Cart && !GameManager.Instance.TransportManager.HasCart())
+                    Wenzil.Console.Console.ExecuteCommand("wagon_rescue");
+            }
+
+            if (RPGHorses != null)
+                Wenzil.Console.Console.ExecuteCommand("rpg_reposition");
+
+            lastTransportMode = TransportModes.Foot;
         }
 
         void AssignTemporaryShip()
@@ -851,14 +945,17 @@ namespace FastTravelEncounters
                                 (mapSummary.LocationType == DFRegion.LocationTypes.TownCity ||
                                 mapSummary.LocationType == DFRegion.LocationTypes.TownHamlet ||
                                 mapSummary.LocationType == DFRegion.LocationTypes.TownVillage ||
-                                mapSummary.LocationType == DFRegion.LocationTypes.Tavern)) ||
+                                mapSummary.LocationType == DFRegion.LocationTypes.Tavern ||
+                                (hasResidences && mapSummary.LocationType == DFRegion.LocationTypes.HomeWealthy) ||
+                                (hasResidences && mapSummary.LocationType == DFRegion.LocationTypes.HomeFarms) ||
+                                (hasResidences && mapSummary.LocationType == DFRegion.LocationTypes.HomePoor))) ||
                                 (!travelPopUp.SleepModeInn &&
                                 (mapSummary.LocationType == DFRegion.LocationTypes.DungeonRuin ||
                                 mapSummary.LocationType == DFRegion.LocationTypes.DungeonLabyrinth ||
                                 mapSummary.LocationType == DFRegion.LocationTypes.DungeonKeep))
                                 )
                             {
-                                if (travelPopUp.SleepModeInn)
+                                if (travelPopUp.SleepModeInn && !hasResidences)
                                 {
                                     DaggerfallUnity.Instance.ContentReader.GetLocation(mapSummary.RegionIndex, mapSummary.MapIndex, out DFLocation dfLocation);
 
@@ -951,6 +1048,9 @@ namespace FastTravelEncounters
 
         public IEnumerator SpawnEncounterCoroutine()
         {
+            if (RealisticWagonGameObject != null)
+                RealisticWagonGameObject.SetActive(false);
+
             if (ClimatesAndCalories != null)
             {
                 fade = true;
@@ -974,7 +1074,7 @@ namespace FastTravelEncounters
             TransportManager transportManager = GameManager.Instance.TransportManager;
 
             bool atSea = GameManager.Instance.PlayerGPS.CurrentPoliticIndex == 64 ? true : false;
-            bool isRoad = BasicRoadsUtils.IsRoad(pos.X, pos.Y);
+            bool isRoad = BasicRoads != null ? BasicRoadsUtils.IsRoad(pos.X, pos.Y) : false;
             bool inHouse = false;
             bool isNight = time.Hour < 8 || time.Hour > 16 ? true : false;
 
@@ -1037,6 +1137,9 @@ namespace FastTravelEncounters
                     AssignTemporaryShip();
                 }
 
+                if (RealisticWagonGameObject != null)
+                    RealisticWagonGameObject.SetActive(false);
+
                 GameManager.Instance.TransportManager.TransportMode = TransportModes.Ship;
 
                 yield return new WaitForSeconds(0.2f);
@@ -1045,6 +1148,13 @@ namespace FastTravelEncounters
 
                 if (surprised)
                 {
+                    if (RPGHorses != null)
+                    {
+                        if (transportManager.TransportMode != TransportModes.Foot)
+                            transportManager.TransportMode = TransportModes.Foot;
+                        yield return new WaitForSeconds(0.2f);
+                    }
+
                     DaggerfallStaticDoors[] staticDoors = currentLocation.StaticDoorCollections;
                     if (staticDoors.Length > 0)
                     {
@@ -1064,7 +1174,7 @@ namespace FastTravelEncounters
                         GameManager.Instance.PlayerEnterExit.IsPlayerInsideOpenShop = RMBLayout.IsShop(db.buildingType) && PlayerActivate.IsBuildingOpen(db.buildingType);
                         GameManager.Instance.PlayerEnterExit.IsPlayerInsideTavern = RMBLayout.IsTavern(db.buildingType);
                         GameManager.Instance.PlayerEnterExit.IsPlayerInsideResidence = RMBLayout.IsResidence(db.buildingType);
-                        GameManager.Instance.PlayerEnterExit.TransitionInterior(doorOwner, staticDoor);
+                        GameManager.Instance.PlayerEnterExit.TransitionInterior(doorOwner, staticDoor, false, false);
 
                         //align player to hull
                         if (DaggerfallBankManager.OwnedShip == ShipType.Small)
@@ -1128,14 +1238,14 @@ namespace FastTravelEncounters
                     {
                         if (currentLocation.Summary.HasDungeon)
                         {
-                            reposition = StreamingWorld.RepositionMethods.DungeonEntrance;
+                            //reposition = StreamingWorld.RepositionMethods.DungeonEntrance;
 
                             GameManager.Instance.StreamingWorld.SetAutoReposition(reposition, Vector3.zero);
 
-                            yield return new WaitForSeconds(0.2f);
+                            yield return new WaitForSeconds(1f);
 
                             //Dismount the player
-                            if (transportManager.TransportMode == TransportModes.Horse || transportManager.TransportMode == TransportModes.Cart)
+                            if (transportManager.TransportMode != TransportModes.Foot)
                                 transportManager.TransportMode = TransportModes.Foot;
                         }
                         else
@@ -1145,14 +1255,43 @@ namespace FastTravelEncounters
 
                             GameManager.Instance.StreamingWorld.SetAutoReposition(reposition, Vector3.zero);
 
-                            yield return new WaitForSeconds(0.2f);
+                            if (RPGHorses != null)
+                            {
+                                if (transportManager.TransportMode != TransportModes.Foot)
+                                    transportManager.TransportMode = TransportModes.Foot;
+                            }
+
+                            yield return new WaitForSeconds(1f);
 
                             //how to get static doors from building type?
-                            List<BuildingSummary> tavernSummaries = GameManager.Instance.StreamingWorld.GetCurrentBuildingDirectory().GetBuildingsOfType(DFLocation.BuildingTypes.Tavern);
+                            List<BuildingSummary> buildingSummaries = GameManager.Instance.StreamingWorld.GetCurrentBuildingDirectory().GetBuildingsOfType(DFLocation.BuildingTypes.Tavern);
 
-                            if (tavernSummaries.Count > 0)
+                            if (hasResidences)
                             {
-                                int buildingKey = tavernSummaries[UnityEngine.Random.Range(0, tavernSummaries.Count)].buildingKey;
+                                //if residences are installed, then there's a chance there is no tavern in location
+                                if (buildingSummaries.Count < 1)
+                                {
+                                    Debug.Log("FAST TRAVEL ENCOUNTERS - NO TAVERNS FOUND! LOOKING FOR A HOUSE1!");
+                                    buildingSummaries = GameManager.Instance.StreamingWorld.GetCurrentBuildingDirectory().GetBuildingsOfType(DFLocation.BuildingTypes.House1);
+                                }
+
+                                if (buildingSummaries.Count < 1)
+                                {
+                                    Debug.Log("FAST TRAVEL ENCOUNTERS - NO HOUSE1 FOUND! LOOKING FOR A HOUSE2!");
+                                    buildingSummaries = GameManager.Instance.StreamingWorld.GetCurrentBuildingDirectory().GetBuildingsOfType(DFLocation.BuildingTypes.House2);
+                                }
+
+                                if (buildingSummaries.Count < 1)
+                                {
+                                    Debug.Log("FAST TRAVEL ENCOUNTERS - NO HOUSE2 FOUND! LOOKING FOR A HOUSE3!");
+                                    buildingSummaries = GameManager.Instance.StreamingWorld.GetCurrentBuildingDirectory().GetBuildingsOfType(DFLocation.BuildingTypes.House3);
+                                }
+                            }
+
+                            if (buildingSummaries.Count > 0)
+                            {
+                                //pick a random building
+                                int buildingKey = buildingSummaries[UnityEngine.Random.Range(0, buildingSummaries.Count)].buildingKey;
 
                                 //how to get building type from static doors?
                                 foreach (DaggerfallStaticDoors staticDoors in currentLocation.StaticDoorCollections)
@@ -1163,7 +1302,7 @@ namespace FastTravelEncounters
                                         {
                                             StaticDoor door = staticDoor;
 
-                                            Debug.Log("FAST TRAVEL ENCOUNTERS - FOUND A STATIC DOOR BELONGING TO THE TAVERN!");
+                                            Debug.Log("FAST TRAVEL ENCOUNTERS - FOUND A STATIC DOOR BELONGING TO THE BUILDING!");
 
                                             //place player inside tavern interior
                                             // Get building discovery data - this is added when player clicks door at exterior
@@ -1175,11 +1314,17 @@ namespace FastTravelEncounters
                                             GameManager.Instance.PlayerEnterExit.IsPlayerInsideOpenShop = RMBLayout.IsShop(db.buildingType) && PlayerActivate.IsBuildingOpen(db.buildingType);
                                             GameManager.Instance.PlayerEnterExit.IsPlayerInsideTavern = RMBLayout.IsTavern(db.buildingType);
                                             GameManager.Instance.PlayerEnterExit.IsPlayerInsideResidence = RMBLayout.IsResidence(db.buildingType);
-                                            GameManager.Instance.PlayerEnterExit.TransitionInterior(staticDoors.transform, door);
+                                            GameManager.Instance.PlayerEnterExit.TransitionInterior(staticDoors.transform, door, false, false);
 
-                                            yield return new WaitForSeconds(0.2f);
+                                            if (hasResidences)
+                                                yield return new WaitForSeconds(5f);
+                                            else
+                                                yield return new WaitForSeconds(1f);
 
+                                            Debug.Log("FAST TRAVEL ENCOUNTERS - RELOCATING TO VALID MARKER!");
                                             GameManager.Instance.PlayerEnterExit.Interior.FindMarker(out startPos, DaggerfallInterior.InteriorMarkerTypes.Rest, true);
+                                            if (startPos == Vector3.zero)
+                                                GameManager.Instance.PlayerEnterExit.Interior.FindMarker(out startPos, DaggerfallInterior.InteriorMarkerTypes.Enter, true);
                                             playerObject.transform.position = startPos;
                                             GameManager.Instance.PlayerMotor.FixStanding();
 
@@ -1227,15 +1372,36 @@ namespace FastTravelEncounters
                             {
                                 Debug.Log("WE WAS SUPRIZED!");
                                 //get a door to a random tavern and put player in front of it
-                                List<BuildingSummary> tavernSummaries = GameManager.Instance.StreamingWorld.GetCurrentBuildingDirectory().GetBuildingsOfType(DFLocation.BuildingTypes.Tavern);
-                                BuildingSummary tavern = tavernSummaries[UnityEngine.Random.Range(0, tavernSummaries.Count)];
+                                List<BuildingSummary> buildingSummaries = GameManager.Instance.StreamingWorld.GetCurrentBuildingDirectory().GetBuildingsOfType(DFLocation.BuildingTypes.Tavern);
+
+                                if (hasResidences)
+                                {
+                                    //if residences are installed, then there's a chance there is no tavern in location
+                                    if (buildingSummaries.Count < 1)
+                                    {
+                                        Debug.Log("FAST TRAVEL ENCOUNTERS - NO TAVERNS FOUND! LOOKING FOR A HOUSE1!");
+                                        buildingSummaries = GameManager.Instance.StreamingWorld.GetCurrentBuildingDirectory().GetBuildingsOfType(DFLocation.BuildingTypes.House1);
+                                    }
+                                    if (buildingSummaries.Count < 1)
+                                    {
+                                        Debug.Log("FAST TRAVEL ENCOUNTERS - NO HOUSE2 FOUND! LOOKING FOR A HOUSE2!");
+                                        buildingSummaries = GameManager.Instance.StreamingWorld.GetCurrentBuildingDirectory().GetBuildingsOfType(DFLocation.BuildingTypes.House2);
+                                    }
+                                    if (buildingSummaries.Count < 1)
+                                    {
+                                        Debug.Log("FAST TRAVEL ENCOUNTERS - NO HOUSE2 FOUND! LOOKING FOR A HOUSE3!");
+                                        buildingSummaries = GameManager.Instance.StreamingWorld.GetCurrentBuildingDirectory().GetBuildingsOfType(DFLocation.BuildingTypes.House3);
+                                    }
+                                }
+
+                                BuildingSummary building = buildingSummaries[UnityEngine.Random.Range(0, buildingSummaries.Count)];
                                 DaggerfallStaticDoors tavernDoors = null;
                                 List<StaticDoor> tavernDoorList = new List<StaticDoor>();
                                 foreach (DaggerfallStaticDoors staticDoors in currentLocation.StaticDoorCollections)
                                 {
                                     foreach (StaticDoor staticDoor in staticDoors.Doors)
                                     {
-                                        if (staticDoor.buildingKey == tavern.buildingKey)
+                                        if (staticDoor.buildingKey == building.buildingKey)
                                         {
                                             Debug.Log("FAST TRAVEL ENCOUNTERS - FOUND A STATIC DOOR BELONGING TO THE TAVERN!");
                                             if (tavernDoors == null)
@@ -1286,8 +1452,10 @@ namespace FastTravelEncounters
                             //set the player to look towards the center
                             GameManager.Instance.PlayerMouseLook.SetHorizontalFacing((center - startPos).normalized);
 
+                            yield return new WaitForSeconds(1f);
+
                             //Dismount the player
-                            if (transportManager.TransportMode == TransportModes.Horse || transportManager.TransportMode == TransportModes.Cart)
+                            if (transportManager.TransportMode != TransportModes.Foot)
                                 transportManager.TransportMode = TransportModes.Foot;
                         }
                         else
@@ -1319,10 +1487,12 @@ namespace FastTravelEncounters
                             startPos = center;
                         playerObject.transform.position = startPos;
 
+                        yield return new WaitForSeconds(1f);
+
                         if (isNight)
                         {
                             //Dismount the player
-                            if (transportManager.TransportMode == TransportModes.Horse || transportManager.TransportMode == TransportModes.Cart)
+                            if (transportManager.TransportMode != TransportModes.Foot)
                                 transportManager.TransportMode = TransportModes.Foot;
                         }
                     }
@@ -1389,6 +1559,11 @@ namespace FastTravelEncounters
                 WarmAshesEncounter(isNight, atSea, inHouse);
             else
                 VanillaEncounter(isNight, atSea, inHouse);
+
+            if (RealisticWagonGameObject != null)
+                RealisticWagonGameObject.SetActive(true);
+
+            RescueHorseAndCart();
 
             canResume = true;
         }
@@ -1591,7 +1766,7 @@ namespace FastTravelEncounters
 
                 if (GameManager.Instance.PlayerEnterExit.IsPlayerInside)
                 {
-                    radius = 2f;
+                    radius = 1f;
 
                     if (surprised)
                     {
@@ -1645,7 +1820,7 @@ namespace FastTravelEncounters
 
                 if (GameManager.Instance.PlayerEnterExit.IsPlayerInside)
                 {
-                    radius = 2f;
+                    radius = 1f;
 
                     if (surprised)
                     {
@@ -1678,6 +1853,11 @@ namespace FastTravelEncounters
                     CreateFoeSpawner(spawnPoint, false, enemyList.ToArray(), radius, radius * 2);
                 }
             }
+        }
+
+        void PlacePlayerInsideBuilding()
+        {
+
         }
 
         void ShowMessage(string line1, string line2, string line3)
@@ -1742,9 +1922,9 @@ namespace FastTravelEncounters
             fireAudioSource.AudioSource.volume = 0.7f;
             fireAudioSource.SetSound(SoundClips.Burning, AudioPresets.LoopIfPlayerNear);
 
-            //Don't spawn tent if pixel has location
+            /*//Don't spawn tent if pixel has location
             if (GameManager.Instance.PlayerGPS.CurrentLocation.Loaded)
-                return;
+                return;*/
 
             //tent
             tentMatrix = playerTransform.localToWorldMatrix;

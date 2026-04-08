@@ -1,0 +1,19 @@
+[
+    {
+        "index": 1000,
+        "element": 4,
+        "spellName": "!Combat Chameleon",
+        "rangeType": 0,
+        "cost": 50,
+        "icon": 61,
+        "effects": [
+            {
+                "type": 23,
+                "subType": 1,
+                "durationBase": 3,
+                "durationMod": 1,
+                "durationPerLevel": 1
+            }
+        ]
+    }
+]

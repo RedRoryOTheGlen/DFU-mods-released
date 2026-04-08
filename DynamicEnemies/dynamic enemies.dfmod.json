@@ -1,0 +1,24 @@
+{
+    "ModTitle": "Killer Instincts",
+    "ModVersion": "1.2.1",
+    "ModAuthor": "RedRoryOTheGlen",
+    "ContactInfo": "rmufrancisco@gmail.com",
+    "DFUnity_Version": "1.1.1",
+    "ModDescription": "Makes enemies much more dynamic by giving them new movement abilities",
+    "GUID": "3c4ad5fa-a85d-4768-adf7-248afa781870",
+    "Files": [
+        "Assets/Game/Mods/DynamicEnemies/Textures/112398_0-3.PNG",
+        "Assets/Game/Mods/DynamicEnemies/dynamic enemies.dfmod.json",
+        "Assets/Game/Mods/DynamicEnemies/Textures/112398_0-7.PNG",
+        "Assets/Game/Mods/DynamicEnemies/Textures/112398_0-1.PNG",
+        "Assets/Game/Mods/DynamicEnemies/Textures/112398_0-5.PNG",
+        "Assets/Game/Mods/DynamicEnemies/modsettings.json",
+        "Assets/Game/Mods/DynamicEnemies/Textures/112398_0-4.PNG",
+        "Assets/Game/Mods/DynamicEnemies/Scripts/DynamicEnemyMotor.cs",
+        "Assets/Game/Mods/DynamicEnemies/Textures/112398_0-6.PNG",
+        "Assets/Game/Mods/DynamicEnemies/Textures/112398_0-0.PNG",
+        "Assets/Game/Mods/DynamicEnemies/Textures/112398_0-2.PNG",
+        "Assets/Game/Mods/DynamicEnemies/Scripts/DynamicEnemies.cs",
+        "Assets/Game/Mods/DynamicEnemies/SpellRecords.json"
+    ]
+}

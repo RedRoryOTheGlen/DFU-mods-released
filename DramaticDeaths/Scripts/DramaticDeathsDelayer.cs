@@ -53,23 +53,6 @@ namespace DramaticDeaths
 
         IEnumerator PerformDeath()
         {
-            // If enemy associated with quest system, make sure quest system is done with it first
-            questResourceBehaviour = GetComponent<QuestResourceBehaviour>();
-            if (questResourceBehaviour)
-            {
-                int tries = 0;
-                while (!questResourceBehaviour.IsFoeDead && tries < 5)
-                {
-                    tries++;
-                    yield return new WaitForSeconds(1);
-                }
-
-                if (!questResourceBehaviour.IsFoeDead)
-                {
-                    dying = null;
-                    yield break;
-                }
-            }
 
             Debug.Log("DRAMATIC DEATHS - Performing Death!");
 
@@ -78,6 +61,28 @@ namespace DramaticDeaths
                 motor.KnockbackSpeed = knockbackMin;
 
             mobile.ChangeEnemyState(MobileStates.Hurt);
+
+            // If enemy associated with quest system, make sure quest system is done with it first
+            questResourceBehaviour = GetComponent<QuestResourceBehaviour>();
+            if (questResourceBehaviour)
+            {
+                int tries = 0;
+                while (!questResourceBehaviour.IsFoeDead && tries < 100)
+                {
+                    if (motor.KnockbackSpeed < knockbackMin)
+                        motor.KnockbackSpeed = knockbackMin;
+                    mobile.ChangeEnemyState(MobileStates.Hurt);
+
+                    tries++;
+                    yield return new WaitForEndOfFrame();
+                }
+
+                if (!questResourceBehaviour.IsFoeDead)
+                {
+                    dying = null;
+                    yield break;
+                }
+            }
 
             // Unequip items on starting death
             // This is still required so enemy equipment is not marked as equipped
@@ -106,20 +111,15 @@ namespace DramaticDeaths
                 SoundClips pain = sounds.AttackSound;
 
                 if (entityBehaviour.EntityType == EntityTypes.EnemyClass)
-                    pain = GetHumanoidDeathSound(sounds.RaceForSounds, mobile.Summary.Enemy.Gender);
+                {
+                    if (mobile.Enemy.ID == (int)MobileTypes.Knight_CityWatch)
+                        pain = GetHumanoidDeathSound(sounds.RaceForSounds, MobileGender.Male);
+                    else
+                        pain = GetHumanoidDeathSound(sounds.RaceForSounds, mobile.Summary.Enemy.Gender);
+                }
 
                 dfAudioSource.PlayOneShot(pain, 1, 1);
             }
-
-            /*//play death sound on killing blow
-            if (DaggerfallUI.Instance.DaggerfallAudioSource)
-            {
-                SoundClips pain = sounds.AttackSound;
-                if (entityBehaviour.EntityType == EntityTypes.EnemyClass)
-                    pain = GetHumanoidDeathSound(sounds.RaceForSounds, mobile.Summary.Enemy.Gender);
-
-                DaggerfallUI.Instance.DaggerfallAudioSource.PlayClipAtPoint(pain, transform.position, 1f);
-            }*/
 
             while (motor.KnockbackSpeed > 0 || (!controller.isGrounded && mobile.Enemy.Behaviour != MobileBehaviour.Aquatic))
             {
