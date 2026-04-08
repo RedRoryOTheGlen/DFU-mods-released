@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using DaggerfallWorkshop.Game;
+using DaggerfallWorkshop.Game.Serialization;
 using DaggerfallWorkshop.Game.Entity;
 using DaggerfallWorkshop.Game.Items;
 using DaggerfallWorkshop.Game.Utility;
@@ -38,11 +39,17 @@ namespace CameraTransformerMod
 
         Vector3 eyeLocalPosDefault;
 
+        bool CursorEnabled;
+        Vector3 eyeLocalEulerAnglesCursor;
+        Vector3 skyEyeLocalEulerAnglesCursor;
+
         Vector3 bobVector;
         Vector3 bobCurrent;
         Vector3 bobTarget;
         float bobSpeed = 1;
         float bobSize = 1;
+        bool bobMovementBasedSpeed;
+        bool bobMovementBasedScale;
 
         bool tiltInvertWhileRiding = true;
         Vector3 tiltTarget;
@@ -64,6 +71,9 @@ namespace CameraTransformerMod
         Vector3 recoilVector;
 
         bool roll;
+
+        bool Toggled;
+        KeyCode toggleKeyCode = KeyCode.None;
 
         Mod ceh;
 
@@ -119,7 +129,9 @@ namespace CameraTransformerMod
             if (change.HasChanged("Bob"))
             {
                 bobSpeed = settings.GetValue<float>("Bob", "Speed") * 6;
-                bobSize = settings.GetValue<float>("Bob", "Scale") * 0.1f;
+                bobSize = settings.GetValue<float>("Bob", "Scale")*0.05f;
+                bobMovementBasedSpeed = settings.GetValue<bool>("Bob", "MovementBasedSpeed");
+                bobMovementBasedScale = settings.GetValue<bool>("Bob", "MovementBasedScale");
             }
             if (change.HasChanged("Roll"))
             {
@@ -136,6 +148,10 @@ namespace CameraTransformerMod
             {
                 recoilStrength = settings.GetValue<float>("Recoil", "Strength") * 100;
             }
+            if (change.HasChanged("Miscellaneous"))
+            {
+                toggleKeyCode = SetKeyFromText(settings.GetString("Miscellaneous", "ToggleInput"));
+            }
         }
 
         private void LateUpdate()
@@ -144,16 +160,52 @@ namespace CameraTransformerMod
             tiltTarget = Vector3.zero;
             groundVector = Vector3.zero;
 
+            if (!GameManager.IsGamePaused && !SaveLoadManager.Instance.LoadInProgress)
+            {
+                if (InputManager.Instance.GetKeyDown(toggleKeyCode))
+                    Toggled = !Toggled;
+            }
+
+            if (Toggled)
+                return;
+
+            if (CursorEnabled)
+            {
+                if (!mouseLook.cursorActive)
+                {
+                    //Cursor mode was just disabled
+                    CursorEnabled = false;
+                }
+            }
+            else
+            {
+                if (mouseLook.cursorActive)
+                {
+                    //Cursor mode was just enabled
+                    eyeLocalEulerAnglesCursor = eye.transform.localEulerAngles;
+                    skyEyeLocalEulerAnglesCursor = skyEye.transform.localEulerAngles;
+                    CursorEnabled = true;
+                }
+            }
+
             if (!GameManager.IsGamePaused && !GameManager.Instance.PlayerDeath.DeathInProgress)
             {
                 Vector3 playerCameraLocalEulerAngles = eye.transform.localEulerAngles;
                 Vector3 skyCameraLocalEulerAngles = skyEye.transform.localEulerAngles;
 
+                if (CursorEnabled)
+                {
+                    playerCameraLocalEulerAngles = eyeLocalEulerAnglesCursor;
+                    skyCameraLocalEulerAngles = skyEyeLocalEulerAnglesCursor;
+                }
+
                 currentMoveDirection = body.transform.InverseTransformDirection(new Vector3(motor.MoveDirection.x, 0, motor.MoveDirection.z));
                 speedFactor = currentMoveDirection.magnitude / GameManager.Instance.SpeedChanger.GetWalkSpeed(GameManager.Instance.PlayerEntity);
 
-                tiltTarget = Vector3.back * rollMovementSize * currentMoveDirection.x;
+                if (motor.FreezeMotor <= 0)
+                    tiltTarget = Vector3.back * rollMovementSize * currentMoveDirection.x;
 
+                float heightOffset = 0;
                 float ridingOffset = 0;
                 if (motor.IsRiding)
                 {
@@ -161,19 +213,48 @@ namespace CameraTransformerMod
                     ridingOffset = 1;
                     if (tiltInvertWhileRiding)
                         tiltTarget *= -1;
+
+                    if (motor.OnExteriorWater == PlayerMotor.OnExteriorWaterMethod.Swimming)
+                        heightOffset = 0.6f;
+                    else
+                        heightOffset = -0.4f;
+                }
+                else
+                {
+                    if (motor.OnExteriorWater == PlayerMotor.OnExteriorWaterMethod.Swimming)
+                        heightOffset = 0.75f;
+                    else if (motor.IsCrouching)
+                        heightOffset = 0.54f;
                 }
 
-                if (currentMoveDirection.sqrMagnitude > 0 && motor.IsGrounded)
-                    bobTarget = new Vector3(Mathf.Sin(Time.time * bobSpeed) * (bobSize), Mathf.Sin(ridingOffset + Time.time * bobSpeed * 2) * (bobSize), 0) * speedFactor;
+                float bobOffset = 1;
+
+                float bobSpeedFinal = bobSpeed;
+                float bobSizeFinal = bobSize;
+
+                if (bobMovementBasedSpeed || bobMovementBasedScale)
+                {
+                    if (motor.IsRunning)
+                        bobOffset *= 2;
+                    if (motor.IsCrouching)
+                        bobOffset *= 0.5f;
+                    if (GameManager.Instance.SpeedChanger.isSneaking)
+                        bobOffset *= 0.5f;
+
+                    if (bobMovementBasedSpeed)
+                        bobSpeedFinal = bobSpeed * bobOffset;
+
+                    if (bobMovementBasedScale)
+                        bobSizeFinal = bobSize / bobOffset;
+                }
+
+                if (currentMoveDirection.sqrMagnitude > 0 && motor.IsGrounded && motor.FreezeMotor <= 0)
+                    bobTarget = new Vector3(Mathf.Sin(Time.time * bobSpeedFinal) * bobSizeFinal, Mathf.Sin(ridingOffset + Time.time * bobSpeedFinal * 2) * bobSizeFinal, 0) * speedFactor;
                 else
                     bobTarget = Vector3.zero;
 
-                float sinkHeight = 0;
                 if (motor.IsSwimming || motor.OnExteriorWater == PlayerMotor.OnExteriorWaterMethod.Swimming)
                 {
-                    if (!motor.IsSwimming)
-                        sinkHeight = 0.6f;
-
                     bobVector *= 0.1f;
                     if (rollSwimSize > 0)
                         tiltTarget += new Vector3(Mathf.Sin(Time.time * rollSwimSpeed * 2) * rollSwimSize, Mathf.Sin(1 + Time.time * rollSwimSpeed) * rollSwimSize, Mathf.Sin(Time.time * rollSwimSpeed) * rollSwimSize);
@@ -206,13 +287,35 @@ namespace CameraTransformerMod
                 bobCurrent = Vector3.MoveTowards(bobCurrent, bobTarget, Time.deltaTime);
                 tiltCurrent = Vector3.MoveTowards(tiltCurrent, tiltTarget, Time.deltaTime * rollMovementSpeed);
 
-                eye.transform.localPosition = eyeLocalPosDefault + (Vector3.down * sinkHeight) + (bobCurrent);
+                eye.transform.localPosition = eyeLocalPosDefault + (Vector3.down * heightOffset) + (bobCurrent);
+
+                /*Vector3 steppedBob = new Vector3(Mathf.Floor(bobCurrent.x * 100) / 100, Mathf.Floor(bobCurrent.y * 100) / 100, Mathf.Floor(bobCurrent.z * 100) / 100);
+                eye.transform.localPosition = eyeLocalPosDefault + (Vector3.down * heightOffset) + (steppedBob);*/
 
                 if (roll)
                 {
                     eye.transform.localEulerAngles = playerCameraLocalEulerAngles + tiltCurrent + recoilVector + eye.transform.InverseTransformVector(groundVector);
                     skyEye.transform.localEulerAngles = skyCameraLocalEulerAngles + tiltCurrent + recoilVector;
+
+                    /*Vector3 steppedTilt = new Vector3(Mathf.Floor(tiltCurrent.x * 100) / 100, Mathf.Floor(tiltCurrent.y * 100) / 100, Mathf.Floor(tiltCurrent.z * 100) / 100);
+                    eye.transform.localEulerAngles = playerCameraLocalEulerAngles + steppedTilt + recoilVector + eye.transform.InverseTransformVector(groundVector);
+                    skyEye.transform.localEulerAngles = skyCameraLocalEulerAngles + steppedTilt + recoilVector;*/
                 }
+            }
+        }
+
+        private KeyCode SetKeyFromText(string text)
+        {
+            Debug.Log("Setting Key");
+            if (System.Enum.TryParse(text, out KeyCode result))
+            {
+                Debug.Log("Key set to " + result.ToString());
+                return result;
+            }
+            else
+            {
+                Debug.Log("Detected an invalid key code. Setting to default.");
+                return KeyCode.None;
             }
         }
     }

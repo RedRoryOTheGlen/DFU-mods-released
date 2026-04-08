@@ -1,0 +1,33 @@
+{
+    "ModTitle": "Buff Right Out - Ungilded Armor",
+    "ModVersion": "1.0",
+    "ModAuthor": "RedRoryOTheGlen",
+    "ContactInfo": "rmufrancisco@gmail.com",
+    "DFUnity_Version": "1.1.1",
+    "ModDescription": "Goes with SphincterVision Colors' Ungilded Armor optional module",
+    "GUID": "45403dab-83f4-415a-b46e-1f5c4a81b6be",
+    "Files": [
+        "Assets/Game/Mods/Buffed - Ungilded/Textures/112396_6-0_Mithril.PNG",
+        "Assets/Game/Mods/Buffed - Ungilded/Textures/112396_6-0_Daedric.PNG",
+        "Assets/Game/Mods/Buffed - Ungilded/Textures/112396_6-0_Orcish.PNG",
+        "Assets/Game/Mods/Buffed - Ungilded/Textures/112396_6-0_Adamantium.PNG",
+        "Assets/Game/Mods/Buffed - Ungilded/Textures/112396_6-0_Steel.PNG",
+        "Assets/Game/Mods/Buffed - Ungilded/Textures/112396_6-0_Ebony.PNG",
+        "Assets/Game/Mods/Buffed - Ungilded/Textures/112396_6-0_Iron.PNG",
+        "Assets/Game/Mods/Buffed - Ungilded/Textures/112396_6-0.PNG",
+        "Assets/Game/Mods/Buffed - Ungilded/Textures/112396_6-0_Elven.PNG",
+        "Assets/Game/Mods/Buffed - Ungilded/Textures/112396_6-0_Dwarven.PNG"
+    ],
+    "Dependencies": [
+        {
+            "Name": "buff right out",
+            "IsOptional": true,
+            "IsPeer": false
+        },
+        {
+            "Name": "buff right out for android",
+            "IsOptional": true,
+            "IsPeer": false
+        }
+    ]
+}
