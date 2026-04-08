@@ -1,0 +1,225 @@
+{
+    "Version": null,
+    "Sections": [
+        {
+            "Name": "Command1",
+            "Description": null,
+            "IsAdvanced": false,
+            "Keys": [
+                {
+                    "Value": "",
+                    "Name": "Commands",
+                    "Description": "Separate Commands with a comma (\",\")",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.TextKey"
+                },
+                {
+                    "Value": "",
+                    "Name": "KeyCodes",
+                    "Description": "Separate KeyCodes with a plus sign (\"+\")",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.TextKey"
+                }
+            ],
+            "$version": "v1"
+        },
+        {
+            "Name": "Command2",
+            "Description": null,
+            "IsAdvanced": false,
+            "Keys": [
+                {
+                    "Value": "",
+                    "Name": "Commands",
+                    "Description": "Separate Commands with a comma (\",\")",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.TextKey"
+                },
+                {
+                    "Value": "",
+                    "Name": "KeyCodes",
+                    "Description": "Separate KeyCodes with a plus sign (\"+\")",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.TextKey"
+                }
+            ],
+            "$version": "v1"
+        },
+        {
+            "Name": "Command3",
+            "Description": null,
+            "IsAdvanced": false,
+            "Keys": [
+                {
+                    "Value": "",
+                    "Name": "Commands",
+                    "Description": "Separate Commands with a comma (\",\")",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.TextKey"
+                },
+                {
+                    "Value": "",
+                    "Name": "KeyCodes",
+                    "Description": "Separate KeyCodes with a plus sign (\"+\")",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.TextKey"
+                }
+            ],
+            "$version": "v1"
+        },
+        {
+            "Name": "Command4",
+            "Description": null,
+            "IsAdvanced": false,
+            "Keys": [
+                {
+                    "Value": "",
+                    "Name": "Commands",
+                    "Description": "Separate Commands with a comma (\",\")",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.TextKey"
+                },
+                {
+                    "Value": "",
+                    "Name": "KeyCodes",
+                    "Description": "Separate KeyCodes with a plus sign (\"+\")",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.TextKey"
+                }
+            ],
+            "$version": "v1"
+        },
+        {
+            "Name": "Command5",
+            "Description": null,
+            "IsAdvanced": false,
+            "Keys": [
+                {
+                    "Value": "",
+                    "Name": "Commands",
+                    "Description": "Separate Commands with a comma (\",\")",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.TextKey"
+                },
+                {
+                    "Value": "",
+                    "Name": "KeyCodes",
+                    "Description": "Separate KeyCodes with a plus sign (\"+\")",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.TextKey"
+                }
+            ],
+            "$version": "v1"
+        },
+        {
+            "Name": "Command6",
+            "Description": null,
+            "IsAdvanced": false,
+            "Keys": [
+                {
+                    "Value": "",
+                    "Name": "Commands",
+                    "Description": "Separate Commands with a comma (\",\")",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.TextKey"
+                },
+                {
+                    "Value": "",
+                    "Name": "KeyCodes",
+                    "Description": "Separate KeyCodes with a plus sign (\"+\")",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.TextKey"
+                }
+            ],
+            "$version": "v1"
+        },
+        {
+            "Name": "Command7",
+            "Description": null,
+            "IsAdvanced": false,
+            "Keys": [
+                {
+                    "Value": "",
+                    "Name": "Commands",
+                    "Description": "Separate Commands with a comma (\",\")",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.TextKey"
+                },
+                {
+                    "Value": "",
+                    "Name": "KeyCodes",
+                    "Description": "Separate KeyCodes with a plus sign (\"+\")",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.TextKey"
+                }
+            ],
+            "$version": "v1"
+        },
+        {
+            "Name": "Command8",
+            "Description": null,
+            "IsAdvanced": false,
+            "Keys": [
+                {
+                    "Value": "",
+                    "Name": "Commands",
+                    "Description": "Separate Commands with a comma (\",\")",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.TextKey"
+                },
+                {
+                    "Value": "",
+                    "Name": "KeyCodes",
+                    "Description": "Separate KeyCodes with a plus sign (\"+\")",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.TextKey"
+                }
+            ],
+            "$version": "v1"
+        },
+        {
+            "Name": "Command9",
+            "Description": null,
+            "IsAdvanced": false,
+            "Keys": [
+                {
+                    "Value": "",
+                    "Name": "Commands",
+                    "Description": "Separate Commands with a comma (\",\")",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.TextKey"
+                },
+                {
+                    "Value": "",
+                    "Name": "KeyCodes",
+                    "Description": "Separate KeyCodes with a plus sign (\"+\")",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.TextKey"
+                }
+            ],
+            "$version": "v1"
+        },
+        {
+            "Name": "Command10",
+            "Description": null,
+            "IsAdvanced": false,
+            "Keys": [
+                {
+                    "Value": "",
+                    "Name": "Commands",
+                    "Description": "Separate Commands with a comma (\",\")",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.TextKey"
+                },
+                {
+                    "Value": "",
+                    "Name": "KeyCodes",
+                    "Description": "Separate KeyCodes with a plus sign (\"+\")",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.TextKey"
+                }
+            ],
+            "$version": "v1"
+        }
+    ]
+}

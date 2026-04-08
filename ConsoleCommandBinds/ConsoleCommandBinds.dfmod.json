@@ -1,0 +1,13 @@
+{
+    "ModTitle": "Console Command Binds",
+    "ModVersion": "1.0",
+    "ModAuthor": "RedRoryOTheGlen",
+    "ContactInfo": "rmufrancisco@gmail.com",
+    "DFUnity_Version": "1.1.1",
+    "ModDescription": "Bind console commands to keys or key combinations",
+    "GUID": "6afb6a21-fb38-4466-84a2-23b19e2d66eb",
+    "Files": [
+        "Assets/Game/Mods/ConsoleCommandBinds/Scripts/ConsoleCommandBinds.cs",
+        "Assets/Game/Mods/ConsoleCommandBinds/modsettings.json"
+    ]
+}

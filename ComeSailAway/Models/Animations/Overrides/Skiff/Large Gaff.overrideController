@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!221 &22100000
+AnimatorOverrideController:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: Large Gaff
+  m_Controller: {fileID: 9100000, guid: 8f535947f95f20a408ffb556e38ae52b, type: 2}
+  m_Clips:
+  - m_OriginalClip: {fileID: 7400000, guid: 523e7dd85a51cd74b8bec5ea03ade6f3, type: 2}
+    m_OverrideClip: {fileID: 7400000, guid: 9cbb8f620bdadbb4ab095480f5de8820, type: 2}
+  - m_OriginalClip: {fileID: 7400000, guid: c6d2966d21b31d5498677f4fd4533cd1, type: 2}
+    m_OverrideClip: {fileID: 7400000, guid: c7311ebe641a67740bc229d974c93713, type: 2}
+  - m_OriginalClip: {fileID: 7400000, guid: 304fb5d516692e8499da4ee4fcc81e06, type: 2}
+    m_OverrideClip: {fileID: 7400000, guid: 29c4bfbc7d6db5a44aa90615bd875fd6, type: 2}
+  - m_OriginalClip: {fileID: 7400000, guid: d1054bef36c3c9f4a846c47b2b542cfe, type: 2}
+    m_OverrideClip: {fileID: 7400000, guid: 8acd419e0f187cb4e82445e4b35af965, type: 2}

@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!221 &22100000
+AnimatorOverrideController:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: Large Staysail
+  m_Controller: {fileID: 9100000, guid: 0e997328b1289b343a7aac75b30101e8, type: 2}
+  m_Clips:
+  - m_OriginalClip: {fileID: 7400000, guid: 523e7dd85a51cd74b8bec5ea03ade6f3, type: 2}
+    m_OverrideClip: {fileID: 7400000, guid: 7aaedd443da513f458c353d69d8dff5d, type: 2}
+  - m_OriginalClip: {fileID: 7400000, guid: 36a41fdbcb6614047a299e5240136dd5, type: 2}
+    m_OverrideClip: {fileID: 7400000, guid: 89e5d8dd2453dc844b807f11753d18d4, type: 2}
+  - m_OriginalClip: {fileID: 7400000, guid: e59adaa75e645a84795caf0c6e816411, type: 2}
+    m_OverrideClip: {fileID: 7400000, guid: e029a49674614664ab86713601a7b671, type: 2}
+  - m_OriginalClip: {fileID: 7400000, guid: 193b8d7505a001a4eba69ba3f307c247, type: 2}
+    m_OverrideClip: {fileID: 7400000, guid: 41477f9f56ce62243a84308dbb19df73, type: 2}
+  - m_OriginalClip: {fileID: 7400000, guid: 1c686723f2b44ca4d8d8bb400e9613a8, type: 2}
+    m_OverrideClip: {fileID: 7400000, guid: 3ce467fddb9ccae45b84533905c570c5, type: 2}
+  - m_OriginalClip: {fileID: 7400000, guid: c24d7840677552f41abbceba86d53f4e, type: 2}
+    m_OverrideClip: {fileID: 7400000, guid: e91b3829808dba84db0387f56cb700a1, type: 2}
