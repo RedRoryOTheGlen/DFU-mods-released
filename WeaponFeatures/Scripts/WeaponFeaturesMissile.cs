@@ -192,6 +192,10 @@ public class WeaponFeaturesMissile : MonoBehaviour
         initialRange = myLight.range;
         initialIntensity = myLight.intensity;
 
+        // Setup collider
+        myCollider = GetComponent<SphereCollider>();
+        myCollider.radius = ColliderRadius;
+
         // Use payload when available
         if (payload != null)
         {
@@ -372,6 +376,10 @@ public class WeaponFeaturesMissile : MonoBehaviour
             Destroy(goModel.gameObject);
             impactDetected = true;
         }
+        else
+        {
+            WeaponFeatures.Instance.RaiseOnSpellHitEvent(gameObject, payload, hit.collider.gameObject, hit.point);
+        }
 
         // If missile is area at range
         if (targetType == TargetTypes.AreaAtRange)
@@ -384,17 +392,41 @@ public class WeaponFeaturesMissile : MonoBehaviour
 
     #region Static Methods
 
-    public static DaggerfallEntityBehaviour GetEntityTargetInTouchRange(Vector3 aimPosition, Vector3 aimDirection)
+    public DaggerfallEntityBehaviour GetEntityTargetInTouchRange(Vector3 aimPosition, Vector3 aimDirection, float radius, LayerMask layerMask)
     {
         // Fire ray along caster facing
         // Origin point of ray is set back slightly to fix issue where strikes against target capsules touching caster capsule do not connect
-        RaycastHit hit;
-        aimPosition -= aimDirection * 0.1f;
-        Ray ray = new Ray(aimPosition, aimDirection);
-        if (Physics.SphereCast(ray, SphereCastRadius, out hit, TouchRange))
-            return hit.transform.GetComponent<DaggerfallEntityBehaviour>();
-        else
-            return null;
+        aimPosition -= aimDirection.normalized * 0.1f;
+
+        //new TOB hit detection for touch spells
+        Ray ray = new Ray(aimPosition, aimDirection.normalized);
+
+        //check for maximum distance
+        RaycastHit hit = new RaycastHit();
+        float maxRange = TouchRange;
+        if (Physics.Raycast(ray, out hit, maxRange, layerMask))
+            maxRange = hit.distance;
+
+#if (UNITY_EDITOR)
+        WeaponFeatures.Instance.DrawWireCapsule(aimPosition, aimPosition + (aimDirection.normalized * maxRange), radius, Color.red, 3);
+#endif
+
+        //check for hits inside maximum distance
+        RaycastHit[] hits = Physics.SphereCastAll(aimPosition, radius, aimDirection.normalized, maxRange, layerMask);
+        if (hits.Length > 0)
+        {
+            foreach (RaycastHit hittee in hits)
+            {
+                DaggerfallEntityBehaviour hitBehavior = hittee.collider.gameObject.GetComponent<DaggerfallEntityBehaviour>();
+                if (hitBehavior != null && hitBehavior.gameObject != caster.gameObject)
+                {
+                    Debug.Log("TOME OF BATTLE - MISSILE - TOUCH TARGET IS " + hitBehavior.gameObject.name);
+                    return hitBehavior;
+                }
+            }
+        }
+
+        return null;
     }
 
     #endregion
@@ -411,7 +443,7 @@ public class WeaponFeaturesMissile : MonoBehaviour
         if (myCollider)
             myCollider.enabled = false;
 
-        DaggerfallEntityBehaviour entityBehaviour = GetEntityTargetInTouchRange(GetAimPosition(), GetAimDirection());
+        DaggerfallEntityBehaviour entityBehaviour = GetEntityTargetInTouchRange(GetAimPosition(), GetAimDirection(), ColliderRadius, layerMask);
         if (entityBehaviour && entityBehaviour != caster)
         {
             targetEntities.Add(entityBehaviour);
@@ -428,6 +460,9 @@ public class WeaponFeaturesMissile : MonoBehaviour
     {
         direction = GetAimDirection();
 
+        if (myCollider)
+            myCollider.enabled = false;
+
         Vector3 adjust = Vector3.zero;
         if (caster != GameManager.Instance.PlayerEntityBehaviour)
         {
@@ -435,18 +470,21 @@ public class WeaponFeaturesMissile : MonoBehaviour
             adjust = caster.transform.forward * 0.6f;
             adjust.y += controller.height / 3;
         }
-        else
+        /*else
         {
-            // Adjust slightly downward to match bow animation
-            adjust = (GameManager.Instance.MainCamera.transform.rotation * -Caster.transform.up) * 0.11f;
-            // Offset forward to avoid collision with player
-            adjust += GameManager.Instance.MainCamera.transform.forward * 0.6f;
-            // Adjust to the right or left to match bow animation
-            if (!GameManager.Instance.WeaponManager.ScreenWeapon.FlipHorizontal)
-                adjust += GameManager.Instance.MainCamera.transform.right * 0.15f;
-            else
-                adjust -= GameManager.Instance.MainCamera.transform.right * 0.15f;
-        }
+            if (IsArrow)
+            {
+                // Adjust slightly downward to match bow animation
+                adjust = (GameManager.Instance.MainCamera.transform.rotation * -Caster.transform.up) * 0.11f;
+                // Offset forward to avoid collision with player
+                adjust += GameManager.Instance.MainCamera.transform.forward * 0.6f;
+                // Adjust to the right or left to match bow animation
+                if (!GameManager.Instance.WeaponManager.ScreenWeapon.FlipHorizontal)
+                    adjust += GameManager.Instance.MainCamera.transform.right * 0.15f;
+                else
+                    adjust -= GameManager.Instance.MainCamera.transform.right * 0.15f;
+            }
+        }*/
 
         transform.position = GetAimPosition() + adjust + direction * ArmLength;
         transform.forward = direction;
@@ -603,6 +641,8 @@ public class WeaponFeaturesMissile : MonoBehaviour
 
             // Instantiate payload bundle on target
             effectManager.AssignBundle(payload, AssignBundleFlags.ShowNonPlayerFailures);
+
+            WeaponFeatures.Instance.RaiseOnSpellAffectEvent(payload,entityBehaviour.gameObject);
         }
     }
 

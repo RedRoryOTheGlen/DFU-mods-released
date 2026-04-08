@@ -2,7 +2,7 @@
     {
         "index": 1300,
         "name": "Cuirass",
-        "baseWeight": 10,
+        "baseWeight": 12.5,
         "hitPoints": 4096,
         "capacityOrTarget": 0,
         "basePrice": 80,
@@ -22,7 +22,7 @@
     {
         "index": 1301,
         "name": "Gloves",
-        "baseWeight": 1,
+        "baseWeight": 1.25,
         "hitPoints": 2048,
         "capacityOrTarget": 0,
         "basePrice": 36,
@@ -42,7 +42,7 @@
     {
         "index": 1302,
         "name": "Cuisses",
-        "baseWeight": 2,
+        "baseWeight": 2.5,
         "hitPoints": 3072,
         "capacityOrTarget": 0,
         "basePrice": 62,
@@ -62,7 +62,7 @@
     {
         "index": 1303,
         "name": "Left Vambrace",
-        "baseWeight": 1.6,
+        "baseWeight": 2,
         "hitPoints": 2048,
         "capacityOrTarget": 0,
         "basePrice": 52,
@@ -82,7 +82,7 @@
     {
         "index": 1304,
         "name": "Right Vambrace",
-        "baseWeight": 1.6,
+        "baseWeight": 2,
         "hitPoints": 2048,
         "capacityOrTarget": 0,
         "basePrice": 52,
@@ -102,7 +102,7 @@
     {
         "index": 1305,
         "name": "Helm",
-        "baseWeight": 1.5,
+        "baseWeight": 2.5,
         "hitPoints": 2560,
         "capacityOrTarget": 0,
         "basePrice": 60,
@@ -122,7 +122,7 @@
     {
         "index": 1306,
         "name": "Boots",
-        "baseWeight": 1.6,
+        "baseWeight": 2,
         "hitPoints": 2560,
         "capacityOrTarget": 0,
         "basePrice": 42,

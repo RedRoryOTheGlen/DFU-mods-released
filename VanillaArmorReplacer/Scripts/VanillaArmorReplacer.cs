@@ -1,15 +1,19 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using DaggerfallConnect;
 using DaggerfallConnect.Arena2;
 using DaggerfallWorkshop;
+using DaggerfallWorkshop.Utility.AssetInjection;
 using DaggerfallWorkshop.Game;
 using DaggerfallWorkshop.Game.Entity;
 using DaggerfallWorkshop.Game.Items;
+using DaggerfallWorkshop.Game.Utility;
 using DaggerfallWorkshop.Game.Utility.ModSupport;
 using DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings;
 using DaggerfallWorkshop.Game.Serialization;
+using Wenzil.Console;
 
 namespace VanillaArmorReplacer
 {
@@ -44,6 +48,7 @@ namespace VanillaArmorReplacer
         public int textureArchive = 0;
 
         //armor type settings
+        public int armorAssignment = 0; //0 = material, 1 = universal
         public int armorIron = 0;
         public int armorSteel = 0;
         public int armorSilver = 0;
@@ -75,9 +80,19 @@ namespace VanillaArmorReplacer
         public string nameHelmPlate;
         public string nameBootsPlate;
 
+        //controls
+        public bool useCycleVariant;
+
+        //experimental
+        public bool UniversalArmorTypes;
+
+        IEnumerator conflict;
+
         //custom texture archive stuff
 
         CifRciFile cifFile;
+
+        public bool buffed;
 
         //custom dye stuff
         byte[] dyeLeather = new byte[] { 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F };
@@ -136,8 +151,19 @@ namespace VanillaArmorReplacer
             mod.IsReady = true;
         }
 
+        private void Start()
+        {
+            Mod buffedMod = ModManager.Instance.GetModFromGUID("2d70df14-c379-420e-8ded-07761ae04545");
+            if (buffedMod != null)
+                buffed = true;
+
+            ConsoleCommandsDatabase.RegisterCommand(FixMyArmor.name, FixMyArmor.description, FixMyArmor.usage, FixMyArmor.Execute);
+        }
+
         private static void InitMod()
         {
+            Instance.InitCustomTextureVariants();
+
             DaggerfallUnity.Instance.ItemHelper.RegisterCustomItem(ItemCuirass.templateIndex, ItemGroups.Armor, typeof(ItemCuirass));
             DaggerfallUnity.Instance.ItemHelper.RegisterCustomItem(ItemGauntlets.templateIndex, ItemGroups.Armor, typeof(ItemGauntlets));
             DaggerfallUnity.Instance.ItemHelper.RegisterCustomItem(ItemGreaves.templateIndex, ItemGroups.Armor, typeof(ItemGreaves));
@@ -150,7 +176,58 @@ namespace VanillaArmorReplacer
             LootTables.OnLootSpawned += OnDungeonLootSpawned;
             EnemyDeath.OnEnemyDeath += OnEnemyDeath;
 
+            StartGameBehaviour.OnNewGame += OnNewGame;
             SaveLoadManager.OnLoad += OnLoad;
+        }
+
+        //variant controls
+        public int[] variantsLeather = new int[7];
+        public int[] variantsChain = new int[7];
+        public int[] variantsPlate = new int[7];
+
+        void InitCustomTextureVariants()
+        {
+            Texture2D tex;
+            for (int x = 0; x < 7; x++)
+            {
+                for (int y = 0; y < 10; y++)
+                {
+                    if (!TextureReplacement.TryImportTexture(112350, x + (y * 1000), 0, out tex))
+                    {
+                        variantsLeather[x] = y;
+                        break;
+                    }
+                }
+            }
+
+            for (int x = 0; x < 7; x++)
+            {
+                for (int y = 0; y < 10; y++)
+                {
+                    if (!TextureReplacement.TryImportTexture(112350, 100 + x + (y * 1000), 0, out tex))
+                    {
+                        variantsChain[x] = y;
+                        break;
+                    }
+                }
+            }
+
+            for (int x = 0; x < 7; x++)
+            {
+                for (int y = 0; y < 10; y++)
+                {
+                    if (!TextureReplacement.TryImportTexture(112350, 200 + x + (y * 1000), 0, out tex))
+                    {
+                        variantsPlate[x] = y;
+                        break;
+                    }
+                }
+            }
+        }
+
+        public static void OnNewGame()
+        {
+            Instance.ConvertAllArmor();
         }
 
         public static void OnLoad(SaveData_v1 saveData)
@@ -170,6 +247,11 @@ namespace VanillaArmorReplacer
             if (change.HasChanged("Replacement"))
             {
                 convertTo = settings.GetValue<int>("Replacement", "ConvertInventory");
+            }
+
+            if (change.HasChanged("Controls"))
+            {
+                useCycleVariant = settings.GetValue<bool>("Controls", "CycleVariantOnUse");
             }
 
             if (change.HasChanged("Textures"))
@@ -213,10 +295,22 @@ namespace VanillaArmorReplacer
                 nameBootsPlate = settings.GetString("Names", "PlateBoots");
             }
 
+            bool UAT = settings.GetValue<bool>("Experimental", "UniversalArmorTypes");
+            if (textureArchive == 3)
+                UniversalArmorTypes = UAT;
+            else if (UAT)
+            {
+                UniversalArmorTypes = false;
+                SettingConflict();
+            }
+
             if (change.HasChanged("Replacement"))
                 ConvertAllArmor();
-            else if (change.HasChanged("Textures") || change.HasChanged("Types") || change.HasChanged("Names"))
+            else if (change.HasChanged("Textures") || change.HasChanged("Types") || change.HasChanged("Names") || change.HasChanged("Experimental"))
                 UpdateAllArmor();
+
+
+
 
         }
 
@@ -348,6 +442,12 @@ namespace VanillaArmorReplacer
 
                     bool equipped = item.IsEquipped;
 
+                    if (equipped)
+                    {
+                        player.ItemEquipTable.UnequipItem(item);
+                        player.UpdateEquippedArmorValues(item, false);
+                    }
+
                     switch (templateIndex)
                     {
                         case 102:
@@ -377,14 +477,22 @@ namespace VanillaArmorReplacer
                     {
                         //save the variant
                         if (textureArchive != 3)
-                            newItem.message = item.CurrentVariant;
+                            newItem.message = SetVariantToMessage(newItem.message, item.CurrentVariant);
                         else
                             newItem.message = -1;
+
+                        /*//save the variant
+                        if (UniversalArmorTypes)
+                            newItem.message = SetTypeToMessage(newItem.message, UnityEngine.Random.Range(0,3));*/
 
                         //Debug.Log(item.ItemName + " variant is " + item.CurrentVariant.ToString());
 
                         ItemBuilder.ApplyArmorSettings(newItem, player.Gender, player.Race, (ArmorMaterialTypes)item.nativeMaterialValue,item.CurrentVariant);
                         newItem.currentCondition = item.currentCondition;
+
+                        //update weight
+                        if (UniversalArmorTypes)
+                            newItem.weightInKg = GetWeightOfTypedArmor(newItem);
 
                         if (item.HasLegacyEnchantments || item.HasCustomEnchantments)
                         {
@@ -406,6 +514,7 @@ namespace VanillaArmorReplacer
                         {
                             //player.ItemEquipTable.UnequipItem(item);
                             player.ItemEquipTable.EquipItem(newItem,true, false);
+                            player.UpdateEquippedArmorValues(newItem, true);
                         }
                     }
                 }
@@ -426,6 +535,7 @@ namespace VanillaArmorReplacer
             List<DaggerfallUnityItem> itemsToRemove = new List<DaggerfallUnityItem>();
 
             PlayerEntity player = GameManager.Instance.PlayerEntity;
+            int offset = 235 + (int)ItemBuilder.GetBodyMorphology(player.Race);
 
             for (int i = 0; i < collection.Count; i++)
             {
@@ -444,6 +554,12 @@ namespace VanillaArmorReplacer
                     DaggerfallUnityItem newItem = null;
 
                     bool equipped = item.IsEquipped;
+
+                    if (equipped)
+                    {
+                        player.ItemEquipTable.UnequipItem(item);
+                        player.UpdateEquippedArmorValues(item, false);
+                    }
 
                     switch (templateIndex)
                     {
@@ -480,7 +596,7 @@ namespace VanillaArmorReplacer
                     if (newItem != null)
                     {
                         //set the variant
-                        int variant = item.message;
+                        int variant = GetVariantFromMessage(item.message);
 
                         //Debug.Log(newItem.ItemName + " variant is " + variant.ToString());
 
@@ -507,10 +623,16 @@ namespace VanillaArmorReplacer
                             newItem.IdentifyItem();
 
                         if (equipped && inventory)
-                            player.ItemEquipTable.EquipItem(newItem,true, false);
+                        {
+                            player.ItemEquipTable.EquipItem(newItem, true, false);
+                            player.UpdateEquippedArmorValues(newItem, true);
+                        }
+
+                        newItem.message = -1;
                     }
                 }
             }
+
             if (itemsToRemove.Count > 0)
             {
                 foreach (DaggerfallUnityItem item in itemsToRemove)
@@ -525,6 +647,7 @@ namespace VanillaArmorReplacer
             List<DaggerfallUnityItem> itemsToRemove = new List<DaggerfallUnityItem>();
 
             PlayerEntity player = GameManager.Instance.PlayerEntity;
+            int offset = 235 + (int)ItemBuilder.GetBodyMorphology(player.Race);
 
             for (int i = 0; i < collection.Count; i++)
             {
@@ -537,13 +660,17 @@ namespace VanillaArmorReplacer
                 {
                     //set the variant
                     int variant = -1;
+                    int type = -1;
 
-                    variant = item.message;
+                    variant = GetVariantFromMessage(item.message);
+                    type = GetTypeFromMessage(item.message);
 
                     //item.SetItem(ItemGroups.None,templateIndex);
                     //ItemBuilder.ApplyArmorSettings(item, player.Gender, player.Race, (ArmorMaterialTypes)item.nativeMaterialValue, variant);
 
                     item.CurrentVariant = variant;
+
+                    //Debug.Log("VANILLA ARMOR REPLACER - " + ((ArmorMaterialTypes)item.nativeMaterialValue).ToString() + " " + item.ItemName + " VARIANT IS " + variant.ToString() + " AND TYPE IS " + type.ToString());
                 }
                 else if (IsCustomArmor(item))
                 {
@@ -554,6 +681,12 @@ namespace VanillaArmorReplacer
                     DaggerfallUnityItem newItem = null;
 
                     bool equipped = item.IsEquipped;
+
+                    if (equipped)
+                    {
+                        player.ItemEquipTable.UnequipItem(item);
+                        player.UpdateEquippedArmorValues(item, false);
+                    }
 
                     if (item is ItemCuirass)
                         newItem = ItemBuilder.CreateItem(ItemGroups.Armor, 1300);
@@ -573,7 +706,7 @@ namespace VanillaArmorReplacer
                     if (newItem != null)
                     {
                         //set the variant
-                        int variant = item.message;
+                        int variant = GetVariantFromMessage(item.message);
 
                         //Debug.Log(newItem.ItemName + " variant is " + variant.ToString());
 
@@ -598,7 +731,10 @@ namespace VanillaArmorReplacer
                             newItem.IdentifyItem();
 
                         if (equipped && inventory)
+                        {
                             player.ItemEquipTable.EquipItem(newItem, true, false);
+                            player.UpdateEquippedArmorValues(newItem, true);
+                        }
                     }
                 }
             }
@@ -610,12 +746,22 @@ namespace VanillaArmorReplacer
             }
         }
 
+        public bool IsPlayerBuffed()
+        {
+            if (buffed && GameManager.Instance.PlayerEntity.Gender == Genders.Female &&
+                (GameManager.Instance.PlayerEntity.RaceTemplate.Name == "Orc" ||
+                GameManager.Instance.PlayerEntity.RaceTemplate.Name == "Nord"))
+                return true;
+
+            return false;
+        }
+
         bool IsCustomArmor(DaggerfallUnityItem armor)
         {
             if (armor is ItemCuirass ||
                 armor is ItemGauntlets ||
                 armor is ItemGreaves ||
-                armor is ItemPauldronLeft ||
+                armor is ItemPauldronLeft ||    
                 armor is ItemPauldronRight ||
                 armor is ItemHelm ||
                 armor is ItemBoots
@@ -623,6 +769,327 @@ namespace VanillaArmorReplacer
                 return true;
 
             return false;
+        }
+
+        public float GetWeightOfTypedArmor(DaggerfallUnityItem item)
+        {
+            float typeMod = 1;
+            float materialMod = 1;
+
+            int type = GetTypeFromMessage(item.message);
+            switch (type)
+            {
+                case 0:
+                    typeMod = 0.5f;
+                    break;
+                case 1:
+                    typeMod = 0.75f;
+                    break;
+                case 2:
+                    typeMod = 1f;
+                    break;
+            }
+
+            int material = item.nativeMaterialValue;
+            switch (material)
+            {
+                case (int)ArmorMaterialTypes.Leather:
+                    materialMod = 4;
+                    break;
+                case (int)ArmorMaterialTypes.Chain:
+                case (int)ArmorMaterialTypes.Chain2:
+                    materialMod = 4;
+                    break;
+                case (int)ArmorMaterialTypes.Iron:
+                    materialMod = 4;
+                    break;
+                case (int)ArmorMaterialTypes.Steel:
+                    materialMod = 5;
+                    break;
+                case (int)ArmorMaterialTypes.Silver:
+                    materialMod = 4;
+                    break;
+                case (int)ArmorMaterialTypes.Elven:
+                    materialMod = 4;
+                    break;
+                case (int)ArmorMaterialTypes.Dwarven:
+                    materialMod = 3;
+                    break;
+                case (int)ArmorMaterialTypes.Mithril:
+                    materialMod = 4;
+                    break;
+                case (int)ArmorMaterialTypes.Adamantium:
+                    materialMod = 4;
+                    break;
+                case (int)ArmorMaterialTypes.Ebony:
+                    materialMod = 2;
+                    break;
+                case (int)ArmorMaterialTypes.Orcish:
+                    materialMod = 4;
+                    break;
+                case (int)ArmorMaterialTypes.Daedric:
+                    materialMod = 5;
+                    break;
+            }
+
+            return 0.25f * Mathf.Round((((item.ItemTemplate.baseWeight * typeMod) * materialMod)/4)/0.25f);
+        }
+
+        public float GetValueOfTypedArmor(DaggerfallUnityItem item)
+        {
+            float typeMod = 1;
+            float materialMod = 1;
+
+            int type = GetTypeFromMessage(item.message);
+            switch (type)
+            {
+                case 0:
+                    typeMod = 0.5f;
+                    break;
+                case 1:
+                    typeMod = 0.75f;
+                    break;
+                case 2:
+                    typeMod = 1f;
+                    break;
+            }
+
+            int material = item.nativeMaterialValue;
+            switch (material)
+            {
+                case (int)ArmorMaterialTypes.Leather:
+                    materialMod = 4;
+                    break;
+                case (int)ArmorMaterialTypes.Chain:
+                case (int)ArmorMaterialTypes.Chain2:
+                    materialMod = 4;
+                    break;
+                case (int)ArmorMaterialTypes.Iron:
+                    materialMod = 4;
+                    break;
+                case (int)ArmorMaterialTypes.Steel:
+                    materialMod = 5;
+                    break;
+                case (int)ArmorMaterialTypes.Silver:
+                    materialMod = 4;
+                    break;
+                case (int)ArmorMaterialTypes.Elven:
+                    materialMod = 4;
+                    break;
+                case (int)ArmorMaterialTypes.Dwarven:
+                    materialMod = 3;
+                    break;
+                case (int)ArmorMaterialTypes.Mithril:
+                    materialMod = 4;
+                    break;
+                case (int)ArmorMaterialTypes.Adamantium:
+                    materialMod = 4;
+                    break;
+                case (int)ArmorMaterialTypes.Ebony:
+                    materialMod = 2;
+                    break;
+                case (int)ArmorMaterialTypes.Orcish:
+                    materialMod = 4;
+                    break;
+                case (int)ArmorMaterialTypes.Daedric:
+                    materialMod = 5;
+                    break;
+            }
+
+            return 0.25f * Mathf.Round((((item.ItemTemplate.baseWeight * typeMod) * materialMod) / 4) / 0.25f);
+        }
+
+        public int GetChainArmorValue(int material)
+        {
+            int value = 0;
+            switch (material)
+            {
+                case (int)ArmorMaterialTypes.Steel:
+                case (int)ArmorMaterialTypes.Silver:
+                    value = 8;
+                    break;
+                case (int)ArmorMaterialTypes.Elven:
+                    value = 10;
+                    break;
+                case (int)ArmorMaterialTypes.Dwarven:
+                    value = 12;
+                    break;
+                case (int)ArmorMaterialTypes.Mithril:
+                case (int)ArmorMaterialTypes.Adamantium:
+                    value = 14;
+                    break;
+                case (int)ArmorMaterialTypes.Ebony:
+                    value = 16;
+                    break;
+                case (int)ArmorMaterialTypes.Orcish:
+                    value = 18;
+                    break;
+                case (int)ArmorMaterialTypes.Daedric:
+                    value = 20;
+                    break;
+            }
+            return value;
+        }
+
+        public int GetLeatherArmorValue(int material)
+        {
+            int value = 0;
+            switch (material)
+            {
+                case (int)ArmorMaterialTypes.Steel:
+                case (int)ArmorMaterialTypes.Silver:
+                    value = 5;
+                    break;
+                case (int)ArmorMaterialTypes.Elven:
+                    value = 7;
+                    break;
+                case (int)ArmorMaterialTypes.Dwarven:
+                    value = 9;
+                    break;
+                case (int)ArmorMaterialTypes.Mithril:
+                case (int)ArmorMaterialTypes.Adamantium:
+                    value = 11;
+                    break;
+                case (int)ArmorMaterialTypes.Ebony:
+                    value = 13;
+                    break;
+                case (int)ArmorMaterialTypes.Orcish:
+                    value = 15;
+                    break;
+                case (int)ArmorMaterialTypes.Daedric:
+                    value = 17;
+                    break;
+            }
+            return value;
+        }
+
+        public int GetVariantFromMessage(int message)
+        {
+            //returns the last digit of the value (eg, the variant)
+            //Debug.Log("VANILLA ARMOR REPLACER - GET VARIANT - MESSAGE IS " + message.ToString());
+
+            int variant = Mathf.FloorToInt(message % 10);
+
+            if (message < 0)
+                variant = -1;
+            else
+                variant = Mathf.FloorToInt(message % 10);
+
+            //Debug.Log("VANILLA ARMOR REPLACER - GET VARIANT - VARIANT IS " + variant.ToString());
+            return variant;
+        }
+
+        public int SetVariantToMessage(int message, int variant)
+        {
+            //replaces the value in the last digit as the variant
+            //Debug.Log("VANILLA ARMOR REPLACER - SET VARIANT - MESSAGE IS " + message.ToString() + " AND VARIANT IS " + variant.ToString());
+
+            if (message < 10)
+            {
+                Debug.Log("VANILLA ARMOR REPLACER - SET VARIANT - NEW MESSAGE IS " + variant.ToString());
+                return variant;
+            }
+
+            int newMessage = (Mathf.FloorToInt((message / 10) % 10)*10) + variant;
+            //Debug.Log("VANILLA ARMOR REPLACER - SET VARIANT - NEW MESSAGE IS " + newMessage.ToString());
+
+            return newMessage;
+        }
+
+        public int GetTypeFromMessage(int message)
+        {
+            //returns the 10s of the value (eg, the type)
+            //Debug.Log("VANILLA ARMOR REPLACER - GET TYPE - MESSAGE IS " + message.ToString());
+
+            int type;
+
+            if (message < 10)
+            {
+                type = 0;
+                Debug.Log("VANILLA ARMOR REPLACER - GET TYPE - TYPE IS " + type.ToString());
+                return type;
+            }
+
+            type = Mathf.FloorToInt((message / 10) % 10);
+            //Debug.Log("VANILLA ARMOR REPLACER - GET TYPE - TYPE IS " + type.ToString());
+            return type;
+        }
+
+        public int SetTypeToMessage(int message, int type)
+        {
+            //replaces the 10s value as the type
+            //Debug.Log("VANILLA ARMOR REPLACER - SET TYPE - MESSAGE IS " + message.ToString() + " AND TYPE IS " + type.ToString());
+
+            int newMessage;
+
+            if (message < 0)
+                message = 0;
+
+            if (message < 10)
+            {
+                newMessage = message + (type * 10);
+                Debug.Log("VANILLA ARMOR REPLACER - SET TYPE - NEW MESSAGE IS " + newMessage.ToString());
+                return newMessage;
+            }
+
+            newMessage = Mathf.FloorToInt(message % 10) + (type * 10);
+            //Debug.Log("VANILLA ARMOR REPLACER - SET TYPE - NEW MESSAGE IS " + newMessage.ToString());
+            return newMessage;
+        }
+
+        public void SettingConflict()
+        {
+            if (conflict != null)
+                return;
+
+            conflict = MessageSettingConflict();
+            StartCoroutine(conflict);
+        }
+
+        IEnumerator MessageSettingConflict()
+        {
+            yield return new WaitForSeconds(1);
+
+            string[] strings = new string[3];
+            strings[0] = "< CONFIGURABLE ARMOR PROGRESSION >";
+            strings[1] = "Texture Archive is not set to Custom Typed.";
+            strings[2] = "'Universal Armor Types' has been disabled";
+            TextFile.Token[] texts = DaggerfallUnity.Instance.TextProvider.CreateTokens(TextFile.Formatting.JustifyCenter, strings);
+
+            DaggerfallUI.MessageBox(texts);
+
+            yield return new WaitForSeconds(1);
+
+            conflict = null;
+        }
+        void ResetPlayerArmorValues()
+        {
+            //unequip all items
+            PlayerEntity playerEntity = GameManager.Instance.PlayerEntity;
+            DaggerfallUnityItem[] equippedItems = playerEntity.ItemEquipTable.EquipTable;
+            foreach (DaggerfallUnityItem equippedItem in equippedItems)
+            {
+                if (playerEntity.ItemEquipTable.UnequipItem(equippedItem))
+                    playerEntity.UpdateEquippedArmorValues(equippedItem, false);
+            }
+
+            for (int i = 0; i < playerEntity.ArmorValues.Length; i++)
+            {
+                playerEntity.ArmorValues[i] = 100;
+            }
+        }
+
+        private static class FixMyArmor
+        {
+            public static readonly string name = "fixmyarmor";
+            public static readonly string description = "resets the player's bugged armor values";
+            public static readonly string usage = "fixmyarmor";
+
+            public static string Execute(params string[] args)
+            {
+                Instance.ResetPlayerArmorValues();
+                return "Fixing armor values. Re-equip your gear.";
+            }
         }
 
         //old experiment to recolor objects with custom dyes

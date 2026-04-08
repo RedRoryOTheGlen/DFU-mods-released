@@ -18,6 +18,7 @@ using DaggerfallWorkshop.Game.UserInterfaceWindows;
 using DaggerfallWorkshop.Game.Utility;
 using DaggerfallWorkshop.Game.Utility.ModSupport;
 using DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings;
+using DaggerfallWorkshop.Utility;
 using DaggerfallWorkshop.Utility.AssetInjection;
 using DaggerfallConnect;
 
@@ -46,6 +47,7 @@ public class WeaponFeatures : MonoBehaviour
     float cleaveInterval;
     bool cleaveRequireLOS;
     bool cleaveParries;
+    bool cleaveMultiXP;
     float cleaveValueMultiplier = 1;
     float cleaveWeightMultiplier = 1;
     float reachMultiplier = 1;
@@ -56,6 +58,7 @@ public class WeaponFeatures : MonoBehaviour
     float feedbackDodgeScale = 1;
     bool feedbackHurt;
     float feedbackHurtScale = 1;
+    float weaponColliderDepth = 0.25f;
 
     bool meleeHoldAndRelease = true;
 
@@ -87,7 +90,9 @@ public class WeaponFeatures : MonoBehaviour
     WeaponManager weaponManager;
     FPSWeapon ScreenWeapon;
 
+    Mod RoleplayAndRealismItems;
     Mod SphincterVisionAttacks;
+
     Camera skyCamera;
 
     bool blockHoldInput;
@@ -105,6 +110,31 @@ public class WeaponFeatures : MonoBehaviour
     float swingTime = 0.2f;
     float swingTimer = 0;
 
+    bool isDualWielding
+    {
+        get
+        {
+            //return false if player is currently switching weapons
+            if (weaponManager.EquipCountdownLeftHand > 0 || weaponManager.EquipCountdownRightHand > 0)
+                return false;
+
+            DaggerfallUnityItem weaponRight = playerEntity.ItemEquipTable.GetItem(EquipSlots.RightHand);
+            DaggerfallUnityItem weaponLeft = playerEntity.ItemEquipTable.GetItem(EquipSlots.LeftHand);
+
+            //return false if either slot is empty, carrying a bow, or left hand is a shield
+            if (
+                weaponRight == null ||
+                weaponLeft == null ||
+                DaggerfallUnity.Instance.ItemHelper.ConvertItemToAPIWeaponType(weaponRight) == WeaponTypes.Bow ||
+                DaggerfallUnity.Instance.ItemHelper.ConvertItemToAPIWeaponType(weaponLeft) == WeaponTypes.Bow ||
+                weaponLeft.IsShield
+                )
+                return false;
+
+            return true;
+        }
+    }
+
     bool reloaded = true;
     float reloadTime = 10;
     float reloadTimer = 0;
@@ -112,6 +142,9 @@ public class WeaponFeatures : MonoBehaviour
     {
         get
         {
+            if (customWeaponOverrides.ContainsKey(ScreenWeapon.SpecificWeapon.TemplateIndex))
+                return Mathf.RoundToInt(customWeaponOverrides[ScreenWeapon.SpecificWeapon.TemplateIndex].ReloadTime);
+
             if ((Weapons)ScreenWeapon.SpecificWeapon.TemplateIndex == Weapons.Long_Bow)
                 return 1.5f;
             else
@@ -148,6 +181,9 @@ public class WeaponFeatures : MonoBehaviour
         {
             if (archery == 2)
             {
+                if (customWeaponOverrides.ContainsKey(ScreenWeapon.SpecificWeapon.TemplateIndex))
+                    return Mathf.RoundToInt(customWeaponOverrides[ScreenWeapon.SpecificWeapon.TemplateIndex].MissileSpeed * archeryMissileSpeed * archeryMissileSpeedMod);
+
                 if ((Weapons)ScreenWeapon.SpecificWeapon.TemplateIndex == Weapons.Long_Bow)
                     return archeryMissileSpeed * archeryMissileSpeedMod * 2;
                 else
@@ -164,6 +200,9 @@ public class WeaponFeatures : MonoBehaviour
         {
             if (archery == 2)
             {
+                if (customWeaponOverrides.ContainsKey(ScreenWeapon.SpecificWeapon.TemplateIndex))
+                    return Mathf.RoundToInt(customWeaponOverrides[ScreenWeapon.SpecificWeapon.TemplateIndex].MissileSpread * archeryMissileSpread);
+
                 if ((Weapons)ScreenWeapon.SpecificWeapon.TemplateIndex == Weapons.Long_Bow)
                     return archeryMissileSpread/2;
                 else
@@ -191,6 +230,9 @@ public class WeaponFeatures : MonoBehaviour
         {
             if (archery == 2)
             {
+                if (customWeaponOverrides.ContainsKey(ScreenWeapon.SpecificWeapon.TemplateIndex))
+                    return Mathf.RoundToInt(customWeaponOverrides[ScreenWeapon.SpecificWeapon.TemplateIndex].DrawZoom * archeryDrawZoom);
+
                 if ((Weapons)ScreenWeapon.SpecificWeapon.TemplateIndex == Weapons.Long_Bow)
                     return archeryDrawZoom * 2;
                 else
@@ -210,12 +252,18 @@ public class WeaponFeatures : MonoBehaviour
         {
             if (powerAttacks)
             {
+                if (customWeaponOverrides.ContainsKey(ScreenWeapon.SpecificWeapon.TemplateIndex))
+                    return Mathf.RoundToInt(customWeaponOverrides[ScreenWeapon.SpecificWeapon.TemplateIndex].DrawScale * (powerMaxDrawTime / 4));
+
                 return powerMaxDrawTime/4;
             }
             else
             {
                 if (archery == 2)
                 {
+                    if (customWeaponOverrides.ContainsKey(ScreenWeapon.SpecificWeapon.TemplateIndex))
+                        return Mathf.RoundToInt(customWeaponOverrides[ScreenWeapon.SpecificWeapon.TemplateIndex].DrawScale * archeryOverdrawTime);
+
                     if ((Weapons)ScreenWeapon.SpecificWeapon.TemplateIndex == Weapons.Long_Bow)
                         return archeryOverdrawTime * 2;
                     else
@@ -260,7 +308,8 @@ public class WeaponFeatures : MonoBehaviour
 
     public bool archeryAutoReset = true;
 
-    bool archeryAmmoCounter = true;
+    int archeryAmmoCounter;
+    Vector2 archeryAmmoCounterOffset;
     int archeryAmmoCount;
     string archeryAmmoLabel;
     float archeryAmmoLabelLength;
@@ -283,7 +332,7 @@ public class WeaponFeatures : MonoBehaviour
     {
         get
         {
-            if (archeryAmmoCounter && !DaggerfallUnity.Settings.LargeHUD && !GameManager.Instance.WeaponManager.Sheathed && ScreenWeapon.WeaponType == WeaponTypes.Bow)
+            if (archeryAmmoCounter > 0 && !GameManager.Instance.WeaponManager.Sheathed && ScreenWeapon.WeaponType == WeaponTypes.Bow)
                 return true;
             else
                 return false;
@@ -316,14 +365,31 @@ public class WeaponFeatures : MonoBehaviour
 
     float lastPower = 0;
 
+    float powerMaxMod = 1;
+    float powerMinMod = 1;
+    float powerSpeedMod = 1;
+    float powerDrawTimeMod = 1;
+    float powerCostMod = 1;
+
     int powerMax
     {
         get
         {
+            if (entityEffectManager.HasReadySpell)
+            {
+                return Mathf.CeilToInt(
+                    100f *
+                    ((float)playerEntity.Stats.LiveIntelligence / 50f) +  //50% @ 25 stat, 100% @ 50 stat, 200% @ 100 stat
+                    (readySpellMagicSkillAverage / 200f) *    //+50% @ 100 skill
+                    powerMaxMod
+                    );
+            }
+
             return Mathf.CeilToInt(
                 100f *
                 ((float)playerEntity.Stats.LiveStrength / 50f) +  //50% @ 25 stat, 100% @ 50 stat, 200% @ 100 stat
-                ((float)playerEntity.Skills.GetLiveSkillValue(DFCareer.Skills.CriticalStrike) / 2f)    //+50% @ 100 skill
+                ((float)playerEntity.Skills.GetLiveSkillValue(DFCareer.Skills.CriticalStrike) / 200f) *    //+50% @ 100 skill
+                powerMaxMod
                 );
         }
     }
@@ -332,21 +398,22 @@ public class WeaponFeatures : MonoBehaviour
     {
         get
         {
+            if (entityEffectManager.HasReadySpell)
+            {
+                return Mathf.CeilToInt(
+                    -100 +
+                    100f * ((float)playerEntity.Stats.LiveIntelligence / 50f) +  //50% @ 25 stat, 100% @ 50 stat, 200% @ 100 stat
+                    50f * ((float)playerEntity.Stats.LiveWillpower / 50f) *  //50% @ 25 stat, 100% @ 50 stat, 200% @ 100 stat
+                    powerMinMod
+                    );
+            }
+
             return Mathf.CeilToInt(
                 -100 +
                 100f * ((float)playerEntity.Stats.LiveStrength / 50f) +  //50% @ 25 stat, 100% @ 50 stat, 200% @ 100 stat
-                50f * ((float)playerEntity.Stats.LiveAgility / 50f)  //50% @ 25 stat, 100% @ 50 stat, 200% @ 100 stat
+                50f * ((float)playerEntity.Stats.LiveAgility / 50f) *  //50% @ 25 stat, 100% @ 50 stat, 200% @ 100 stat
+                powerMinMod
                 );
-        }
-    }
-
-    float powerMaxDrawTime
-    {
-        get
-        {
-            return (100/powerSpeed) +
-                ((float)playerEntity.Stats.LiveStrength / 25f) +
-                ((float)playerEntity.Skills.GetLiveSkillValue(DFCareer.Skills.Archery) / 25f);
         }
     }
 
@@ -354,6 +421,17 @@ public class WeaponFeatures : MonoBehaviour
     {
         get
         {
+            if (entityEffectManager.HasReadySpell)
+            {
+                return Mathf.CeilToInt(
+                    (readySpellMagicSkillAverage) *
+                    ((float)playerEntity.Stats.LiveWillpower / 50) *
+                    powerSpeedMod
+                    );
+            }
+
+            float grounded = playerMotor.IsGrounded ? 1 : 0.5f;
+
             short weaponSkillID = (short)DFCareer.Skills.HandToHand;
 
             DaggerfallUnityItem weapon = GameManager.Instance.RightHandWeapon.SpecificWeapon;
@@ -365,15 +443,40 @@ public class WeaponFeatures : MonoBehaviour
                 {
                     return Mathf.CeilToInt(
                         ((float)playerEntity.Skills.GetLiveSkillValue(weaponSkillID)) *
-                        ((float)playerEntity.Stats.LiveStrength/50)
+                        ((float)playerEntity.Stats.LiveStrength / 50) *
+                        grounded *
+                        powerSpeedMod
                         );
                 }
+
+                return Mathf.CeilToInt(
+                    ((float)playerEntity.Skills.GetLiveSkillValue(weaponSkillID)) *
+                    Mathf.Clamp(2 - (weapon.EffectiveUnitWeightInKg() / 15f), 0f, 1.9f) *
+                    grounded *
+                    powerSpeedMod
+                    );
             }
 
             return Mathf.CeilToInt(
                 ((float)playerEntity.Skills.GetLiveSkillValue(weaponSkillID)) *
-                Mathf.Clamp(2-(weapon.EffectiveUnitWeightInKg() / 15f),0f,1.9f)
+                grounded *
+                powerSpeedMod
                 );
+        }
+    }
+
+    float powerMaxDrawTime
+    {
+        get
+        {
+            if (ScreenWeapon.SpecificWeapon != null && customWeaponOverrides.ContainsKey(ScreenWeapon.SpecificWeapon.TemplateIndex))
+                return Mathf.RoundToInt(customWeaponOverrides[ScreenWeapon.SpecificWeapon.TemplateIndex].DrawTime * powerDrawTimeMod);
+
+            return (100/powerSpeed) +
+                ((float)playerEntity.Stats.LiveStrength / 200) +
+                ((float)playerEntity.Skills.GetLiveSkillValue(DFCareer.Skills.Archery) / 200) *
+                powerDrawTimeMod
+                ;
         }
     }
 
@@ -381,22 +484,48 @@ public class WeaponFeatures : MonoBehaviour
     {
         get
         {
+            if (entityEffectManager.HasReadySpell)
+                return 100;
+
             return Mathf.CeilToInt(
                 100 -
-                ((float)playerEntity.Stats.LiveAgility / 2)
+                ((float)playerEntity.Stats.LiveAgility / 2) *
+                powerCostMod
                 );
         }
     }
+
+    bool powerMessage;
 
     bool powerDrawIcon
     {
         get
         {
-            if (powerIconStyle == 1)
+            if (powerIconHideDelayTime > 0 && powerIconHideDelayTimer > powerIconHideDelayTime)
+                return false;
+
+            if (powerIconStyle == 3)
             {
-                if (GameManager.Instance.WeaponManager.Sheathed ||
+                if ((GameManager.Instance.WeaponManager.Sheathed ||
                     GameManager.Instance.WeaponManager.EquipCountdownRightHand > 0 ||
-                    GameManager.Instance.WeaponManager.EquipCountdownLeftHand > 0)
+                    GameManager.Instance.WeaponManager.EquipCountdownLeftHand > 0) &&
+                    !entityEffectManager.HasReadySpell)
+                    return false;
+            }
+            else if (powerIconStyle == 2 && powerIconHideDelayTime > 0)
+            {
+                if ((GameManager.Instance.WeaponManager.Sheathed ||
+                    GameManager.Instance.WeaponManager.EquipCountdownRightHand > 0 ||
+                    GameManager.Instance.WeaponManager.EquipCountdownLeftHand > 0) &&
+                    !entityEffectManager.HasReadySpell)
+                    return false;
+            }
+            else if (powerIconStyle == 1)
+            {
+                if ((GameManager.Instance.WeaponManager.Sheathed ||
+                    GameManager.Instance.WeaponManager.EquipCountdownRightHand > 0 ||
+                    GameManager.Instance.WeaponManager.EquipCountdownLeftHand > 0) &&
+                    !entityEffectManager.HasReadySpell)
                     return false;
 
                 if (ScreenWeapon.WeaponType == WeaponTypes.Bow)
@@ -417,7 +546,9 @@ public class WeaponFeatures : MonoBehaviour
             return true;
         }
     }
-    bool powerMessage;
+
+    float powerIconHideDelayTime = 1;
+    float powerIconHideDelayTimer;
 
     int powerIconStyle = 0; //0 = none, 1 = crosshairs+position, 2 = widget+tint
     float powerIconScale = 1;
@@ -436,17 +567,93 @@ public class WeaponFeatures : MonoBehaviour
     Color powerIconWidgetColorMin = Color.red;
     Color powerIconWidgetColorMax = Color.green;
 
+    int powerIconBarDirection;
+    bool powerIconBarBase;
+    Texture2D powerIconBarTexture;
+    Texture2D powerIconBarBaseTexture;
+    Rect powerIconBarRect;
+    Rect powerIconBarBaseRect;
+
     bool lastUsedHand;
+    bool jumped;
 
     IEnumerator conflict;
+
+    bool feedbackKnockback;
+    float feedbackKnockbackMagnitudeMod = 1;
+    float feedbackKnockbackDurationMod = 1;
+    IEnumerator knockbacking;
 
     //events
     public event Action<int> OnMissileChange;
     public event Action<GameObject, DaggerfallUnityItem, float> OnMissileSpawn;
     public event Action<GameObject, DaggerfallUnityItem ,GameObject, Vector3> OnMissileHit;
 
+    public event Action<GameObject, EntityEffectBundle> OnSpellReady;
+    public event Action<EntityEffectBundle> OnSpellCast;
+    public event Action<EntityEffectBundle> OnSpellRelease;
+    public event Action<GameObject, EntityEffectBundle> OnSpellSpawn;
+    public event Action<GameObject, EntityEffectBundle, GameObject, Vector3> OnSpellHit;
+    public event Action<EntityEffectBundle, GameObject> OnSpellAffect;
+
     //reflection
     FieldInfo LastBowUsed;
+
+    //spellcasting
+    int spellcast;
+
+    bool spellcastPower;
+    bool spellcastCasted = true;
+    float readySpellMagicSkillAverage;
+
+    float spellcastTouchRadius;
+    float spellcastMissileSpeed;
+    float spellcastMissileRadius;
+    float spellcastExplosionRadius;
+
+    GameObject spellcastReadyObject;
+    FPSSpellCasting fpsSpellCasting;
+    FieldInfo fpsSpellCasting_OnReleaseFrame;
+
+    EntityEffectManager entityEffectManager;
+    FieldInfo EntityEffectManager_CastInProgress;
+    FieldInfo EntityEffectManager_ReadySpellDoesNotCostSpellPoints;
+    FieldInfo EntityEffectManager_ReadySpellCastingCost;
+    FieldInfo EntityEffectManager_LastReadySpellCastingCost;
+    FieldInfo EntityEffectManager_LastSpell;
+    FieldInfo EntityEffectManager_InstantCast;
+    MethodInfo EntityEffectManager_TallyPlayerReadySpellEffectSkills;
+    MethodInfo EntityEffectManager_RaiseOnCastReadySpell;
+    MethodInfo EntityEffectManager_OnReleaseFrame;
+
+    EntityEffectBundle lastReadySpell;
+
+    //custom weapon override
+    public struct WeaponOverride
+    {
+        public float Reach;
+        public int Cleave;
+        public float ReloadTime;
+        public float DrawZoom;
+        public float DrawScale;
+        public float DrawTime;
+        public float MissileSpeed;
+        public float MissileSpread;
+
+        public WeaponOverride(float reach, int cleave, float reloadTime, float drawZoom, float drawScale, float drawTime, float missileSpeed, float missileSpread)
+        {
+            Reach = reach;
+            Cleave = cleave;
+            ReloadTime = reloadTime;
+            DrawZoom = drawZoom;
+            DrawScale = drawScale;
+            DrawTime = drawTime;
+            MissileSpeed = missileSpeed;
+            MissileSpread = missileSpread;
+        }
+    }
+
+    Dictionary<int, WeaponOverride> customWeaponOverrides = new Dictionary<int, WeaponOverride>();
 
     //Vanilla attack control stuff
     private Gesture _gesture;
@@ -543,9 +750,12 @@ public class WeaponFeatures : MonoBehaviour
         Instance = this;
 
         //load textures
-        TextureReplacement.TryImportTexture(9638, 0, 0, out powerIconCrosshairTexture);
-        TextureReplacement.TryImportTexture(9638, 1, 0, out powerIconWidgetTexture);
-        TextureReplacement.TryImportTexture(9638, 1, 1, out powerIconWidgetBaseTexture);
+        TextureReplacement.TryImportTexture(112390, 0, 0, out powerIconCrosshairTexture);
+        TextureReplacement.TryImportTexture(112390, 1, 0, out powerIconWidgetTexture);
+        TextureReplacement.TryImportTexture(112390, 1, 1, out powerIconWidgetBaseTexture);
+
+        TextureReplacement.TryImportTexture(112390, 2, 0, out powerIconBarTexture);
+        TextureReplacement.TryImportTexture(112390, 2, 1, out powerIconBarBaseTexture);
 
         layerMask = ~(1 << LayerMask.NameToLayer("Player"));
         layerMask = layerMask & ~(1 << LayerMask.NameToLayer("Ignore Raycast"));
@@ -578,10 +788,87 @@ public class WeaponFeatures : MonoBehaviour
 
         SaveLoadManager.OnLoad += OnLoad;
         StartGameBehaviour.OnNewGame += OnNewGame;
-        StartGameBehaviour.OnStartMenu += OnStartMenu;
 
         mod.MessageReceiver = MessageReceiver;
         mod.IsReady = true;
+    }
+
+    private void Start()
+    {
+        entityEffectManager = GameManager.Instance.PlayerEntityBehaviour.GetComponent<EntityEffectManager>();
+        MethodInfo[] methods = entityEffectManager.GetType().GetMethods(BindingFlags.NonPublic |
+            BindingFlags.Public |
+            BindingFlags.Static |
+            BindingFlags.IgnoreCase |
+            BindingFlags.Instance);
+        if (methods.Length > 0)
+        {
+            foreach (MethodInfo method in methods)
+            {
+                if (method.Name == "PlayerSpellCasting_OnReleaseFrame")
+                    EntityEffectManager_OnReleaseFrame = method;
+
+                if (method.Name == "TallyPlayerReadySpellEffectSkills")
+                    EntityEffectManager_TallyPlayerReadySpellEffectSkills = method;
+
+                if (method.Name == "RaiseOnCastReadySpell")
+                    EntityEffectManager_RaiseOnCastReadySpell = method;
+            }
+        }
+
+        FieldInfo[] fields = entityEffectManager.GetType().GetFields(BindingFlags.NonPublic |
+            BindingFlags.Public |
+            BindingFlags.Static |
+            BindingFlags.IgnoreCase |
+            BindingFlags.Instance);
+        if (fields.Length > 0)
+        {
+            foreach (FieldInfo field in fields)
+            {
+                if (field.Name == "castInProgress")
+                    EntityEffectManager_CastInProgress = field;
+
+                if (field.Name == "readySpellDoesNotCostSpellPoints")
+                    EntityEffectManager_ReadySpellDoesNotCostSpellPoints = field;
+
+                if (field.Name == "lastReadySpellCastingCost")
+                    EntityEffectManager_LastReadySpellCastingCost = field;
+
+                if (field.Name == "lastSpell")
+                    EntityEffectManager_LastSpell = field;
+
+                if (field.Name == "readySpellCastingCost")
+                    EntityEffectManager_ReadySpellCastingCost = field;
+
+                if (field.Name == "instantCast")
+                    EntityEffectManager_InstantCast = field;
+            }
+        }
+
+        if (EntityEffectManager_OnReleaseFrame != null)
+            Debug.Log("TOME OF BATTLE - WAR MAGIC - FOUND ENTITY EFFECT MANAGER ON RELEASE FRAME");
+
+        fpsSpellCasting = GameManager.Instance.PlayerSpellCasting;
+
+        fpsSpellCasting_OnReleaseFrame = fpsSpellCasting.GetType().GetField("OnReleaseFrame",
+            BindingFlags.NonPublic |
+            BindingFlags.Public |
+            BindingFlags.Static |
+            BindingFlags.IgnoreCase |
+            BindingFlags.Instance);
+
+        if (fpsSpellCasting_OnReleaseFrame != null)
+        {
+            Debug.Log("TOME OF BATTLE - WAR MAGIC - FOUND SPELLCASTING ON RELEASE FRAME");
+
+            //null the original OnReleaseFrame
+            fpsSpellCasting_OnReleaseFrame.SetValue(fpsSpellCasting, null);
+
+            //Insert our own custom method
+            fpsSpellCasting.OnReleaseFrame += OnReleaseFrame;
+        }
+
+        ModCompatibilityChecking();
     }
 
     private void LoadSettings(ModSettings settings, ModSettingsChange change)
@@ -596,8 +883,10 @@ public class WeaponFeatures : MonoBehaviour
         {
             safeguard = settings.GetValue<bool>("HitDetection", "Safeguard");
             reachRadial = settings.GetValue<bool>("HitDetection", "RadialDistance");
+            weaponColliderDepth = settings.GetValue<float>("HitDetection", "ColliderDepth");
             reachMultiplier = settings.GetValue<float>("HitDetection", "ReachMultiplier");
             cleaveParries = settings.GetValue<bool>("HitDetection", "ParriesPreventCleave");
+            cleaveMultiXP = settings.GetValue<bool>("HitDetection", "PerTargetSkillGain");
             cleaveInterval = settings.GetValue<float>("HitDetection", "CleaveInterval");
             cleaveRequireLOS = settings.GetValue<bool>("HitDetection", "RequireLineOfSight");
             cleaveValueMultiplier = settings.GetValue<float>("HitDetection", "StartingCleaveMultiplier");
@@ -608,6 +897,11 @@ public class WeaponFeatures : MonoBehaviour
             powerAttacks = settings.GetValue<bool>("PowerAttacks", "Enable");
             powerAccuracy = settings.GetValue<int>("PowerAttacks", "AccuracyScaling");
             powerDamage = settings.GetValue<int>("PowerAttacks", "Damage");
+            powerMaxMod = settings.GetValue<float>("PowerAttacks", "PowerCeilingModifier");
+            powerMinMod = settings.GetValue<float>("PowerAttacks", "PowerFloorModifier");
+            powerSpeedMod = settings.GetValue<float>("PowerAttacks", "GainSpeedModifier");
+            powerDrawTimeMod = settings.GetValue<float>("PowerAttacks", "MaxDrawTimeModifier");
+            powerCostMod = settings.GetValue<float>("PowerAttacks", "SwingCostModifier");
             powerIconStyle = settings.GetValue<int>("PowerAttacks", "Indicator");
             powerIconScale = settings.GetValue<float>("PowerAttacks", "IndicatorScale");
             powerIconCrosshairDistance = settings.GetValue<float>("PowerAttacks", "CrosshairDistance");
@@ -615,9 +909,15 @@ public class WeaponFeatures : MonoBehaviour
             powerMessage = settings.GetValue<bool>("PowerAttacks", "DebugMessages");
             powerIconWidgetColorMin = settings.GetColor("PowerAttacks", "WidgetColorMin");
             powerIconWidgetColorMax = settings.GetColor("PowerAttacks", "WidgetColorMax");
+            powerIconBarDirection = settings.GetValue<int>("PowerAttacks", "BarDirection");
+            powerIconBarBase = settings.GetValue<bool>("PowerAttacks", "BarBaseVisible");
+            powerIconHideDelayTime = settings.GetValue<float>("PowerAttacks", "HideIndicatorDelay");
         }
         if (change.HasChanged("Feedback"))
         {
+            feedbackKnockback = settings.GetValue<bool>("Feedback", "KnockbackPlayerOnHit");
+            feedbackKnockbackMagnitudeMod = settings.GetValue<float>("Feedback", "PlayerKnockbackScale");
+            feedbackKnockbackDurationMod = settings.GetValue<float>("Feedback", "PlayerKnockbackDuration");
             feedbackPause = settings.GetValue<bool>("Feedback", "PauseEnemyParries");
             feedbackPauseScale = settings.GetValue<float>("Feedback", "PauseDurationScale");
             feedbackDodge = settings.GetValue<bool>("Feedback", "VisibleEnemyDodges");
@@ -639,6 +939,17 @@ public class WeaponFeatures : MonoBehaviour
             archeryDrawZoomDelay = settings.GetValue<float>("ImprovedArchery", "DrawZoomDelay");
             archeryOverdraw = settings.GetValue<bool>("ImprovedArchery", "DrawScaling");
             archeryOverdrawTime = settings.GetValue<float>("ImprovedArchery", "DrawScaleDuration");
+            archeryAmmoCounter = settings.GetValue<int>("ImprovedArchery", "AmmoCounter");
+            archeryAmmoCounterOffset = new Vector2(settings.GetTupleFloat("ImprovedArchery", "AmmoCounterOffset").First, settings.GetTupleFloat("ImprovedArchery", "AmmoCounterOffset").Second);
+        }
+        if (change.HasChanged("WarMagic"))
+        {
+            spellcast = settings.GetValue<int>("WarMagic", "Mode");
+            spellcastTouchRadius = settings.GetValue<float>("WarMagic", "TouchCollisionRadius");
+            spellcastMissileRadius = settings.GetValue<float>("WarMagic", "MissileCollisionRadius");
+            spellcastExplosionRadius = settings.GetValue<float>("WarMagic", "AreaCollisionRadius");
+            spellcastMissileSpeed = settings.GetValue<float>("WarMagic", "MissileSpeed");
+            spellcastPower = settings.GetValue<bool>("WarMagic", "PowerAttackScaling");
         }
         if (change.HasChanged("Variables"))
         {
@@ -669,6 +980,7 @@ public class WeaponFeatures : MonoBehaviour
             if (powerAttacks || archery > 0)
             {
                 //Damage and Accuracy scaling based on Power and Improved Archery overrides
+                //Overrides Roleplay&RealismItems' Advanced Archery
                 FormulaHelper.RegisterOverride(mod, "AdjustWeaponHitChanceMod", (Func<DaggerfallEntity, DaggerfallEntity, int, int, DaggerfallUnityItem, int>)AdjustWeaponHitChanceMod);
                 FormulaHelper.RegisterOverride(mod, "AdjustWeaponAttackDamage", (Func<DaggerfallEntity, DaggerfallEntity, int, int, DaggerfallUnityItem, int>)AdjustWeaponAttackDamage);
 
@@ -678,12 +990,12 @@ public class WeaponFeatures : MonoBehaviour
                     if (SphincterVisionAttacks != null)
                     {
                         FormulaHelper.RegisterOverride(mod, "CalculateWeaponAttackDamage", (Func<DaggerfallEntity, DaggerfallEntity, int, int, DaggerfallUnityItem, int>)CalculateWeaponAttackDamage_SphincterVision);
-                        FormulaHelper.RegisterOverride(mod, "CalculateHandToHandAttackDamage", (Func<DaggerfallEntity, DaggerfallEntity, int, bool, int>)CalculateHandToHandAttackDamage_SphincterVision);
+                        FormulaHelper.RegisterOverride(mod, "CalculateHandToHandAttackDamage", (Func<DaggerfallEntity, DaggerfallEntity, int, int>)CalculateHandToHandAttackDamage_SphincterVision);
                     }
                     else
                     {
                         FormulaHelper.RegisterOverride(mod, "CalculateWeaponAttackDamage", (Func<DaggerfallEntity, DaggerfallEntity, int, int, DaggerfallUnityItem, int>)CalculateWeaponAttackDamage);
-                        FormulaHelper.RegisterOverride(mod, "CalculateHandToHandAttackDamage", (Func<DaggerfallEntity, DaggerfallEntity, int, bool, int>)CalculateHandToHandAttackDamage);
+                        FormulaHelper.RegisterOverride(mod, "CalculateHandToHandAttackDamage", (Func<DaggerfallEntity, DaggerfallEntity, int, int>)CalculateHandToHandAttackDamage);
                     }
                 }
 
@@ -702,6 +1014,14 @@ public class WeaponFeatures : MonoBehaviour
 
             case "getWeaponReach":
                 callBack?.Invoke("getWeaponReach", GetWeaponReach());
+                break;
+
+            case "getReloadTime":
+                callBack?.Invoke("getReloadTime", reloadTime);
+                break;
+
+            case "registerWeaponOverride":
+                RegisterWeaponOverride(data as object[]);
                 break;
 
             case "overrideMissile":
@@ -724,10 +1044,45 @@ public class WeaponFeatures : MonoBehaviour
                 OnMissileHit += data as Action<GameObject, DaggerfallUnityItem, GameObject, Vector3>;
                 break;
 
+            case "onSpellReady":
+                OnSpellReady += data as Action<GameObject, EntityEffectBundle>;
+                break;
+
+            case "onSpellCast":
+                OnSpellCast += data as Action<EntityEffectBundle>;
+                break;
+
+            case "onSpellRelease":
+                OnSpellRelease += data as Action<EntityEffectBundle>;
+                break;
+
+            case "onSpellSpawn":
+                OnSpellSpawn += data as Action<GameObject, EntityEffectBundle>;
+                break;
+
+            case "onSpellHit":
+                OnSpellHit += data as Action<GameObject, EntityEffectBundle, GameObject, Vector3>;
+                break;
+
+            case "onSpellAffect":
+                OnSpellAffect += data as Action<EntityEffectBundle, GameObject>;
+                break;
+
+
             default:
                 Debug.LogErrorFormat("{0}: unknown message received ({1}).", this, message);
                 break;
         }
+    }
+
+    void RegisterWeaponOverride(object[] weaponData)
+    {
+        if (customWeaponOverrides.ContainsKey((int)weaponData[0]))
+        {
+            customWeaponOverrides[(int)weaponData[0]] = new WeaponOverride((float)weaponData[1], (int)weaponData[2], (float)weaponData[3], (float)weaponData[4], (float)weaponData[5], (float)weaponData[6], (float)weaponData[7], (float)weaponData[8]);
+        }
+        else
+            customWeaponOverrides.Add((int)weaponData[0], new WeaponOverride((float)weaponData[1], (int)weaponData[2], (float)weaponData[3], (float)weaponData[4], (float)weaponData[5], (float)weaponData[6], (float)weaponData[7], (float)weaponData[8]));
     }
 
     private void OnGUI()
@@ -741,8 +1096,16 @@ public class WeaponFeatures : MonoBehaviour
             screenRect = DaggerfallUI.Instance.CustomScreenRect.Value;
         else
             screenRect = new Rect(0, 0, Screen.width, Screen.height);
+
         ScaleX = (float)screenRect.width / (float)nativeScreenWidth;
         ScaleY = (float)screenRect.height / (float)nativeScreenHeight;
+
+        if (DaggerfallUI.Instance.DaggerfallHUD != null &&
+            DaggerfallUnity.Settings.LargeHUD &&
+            (DaggerfallUnity.Settings.LargeHUDUndockedOffsetWeapon || DaggerfallUnity.Settings.LargeHUDDocked))
+        {
+            screenRect.height -= DaggerfallUI.Instance.DaggerfallHUD.LargeHUD.ScreenHeight;
+        }
 
         if (archeryShowAmmoCounter)
         {
@@ -754,8 +1117,7 @@ public class WeaponFeatures : MonoBehaviour
 
             string message = archeryAmmoLabel;
 
-            //place it next to the vitals bar
-            Vector2 arrowLabelPos = new Vector2(screenRect.x + (screenRect.width * 0.02f) + DaggerfallUI.Instance.DaggerfallHUD.HUDVitals.Rectangle.width, screenRect.y + (screenRect.height*0.75f) - DaggerfallUI.Instance.DaggerfallHUD.HUDVitals.Rectangle.height - DaggerfallUI.Instance.DaggerfallHUD.HUDVitals.Parent.Position.y);
+            Vector2 arrowLabelPos = new Vector2(screenRect.x + (screenRect.width * archeryAmmoCounterOffset.x), screenRect.y + (screenRect.height * archeryAmmoCounterOffset.y));
             Vector2 arrowLabelScale = new Vector2(ScaleX, ScaleY);
 
             if (Event.current.type == EventType.Repaint)
@@ -776,8 +1138,67 @@ public class WeaponFeatures : MonoBehaviour
             //draw Power indicator
             if (powerDrawIcon && powerIconStyle > 0)
             {
-                if (powerIconStyle == 2)
+                if (powerIconStyle == 3)
                 {
+                    //Bar
+                    float barWidth = powerIconBarTexture.width * scale * ScaleX;
+                    float barHeight = powerIconBarTexture.height * scale * ScaleY;
+                    float baseWidth = powerIconBarBaseTexture.width * scale * ScaleX;
+                    float baseHeight = powerIconBarBaseTexture.height * scale * ScaleY;
+                    float powerFactor = Mathf.Clamp01(powerCurrent / 100);
+
+                    if (powerIconBarDirection == 2)
+                    {
+                        //down to up
+                        powerIconBarBaseRect = new Rect(
+                            new Vector2(screenRect.x + (screenRect.width * powerIconWidgetOffset.x) - (baseWidth * 0.5f), screenRect.y + (screenRect.height * powerIconWidgetOffset.y) - (baseHeight * 0.5f)),
+                            new Vector2(baseWidth, baseHeight)
+                            );
+
+                        powerIconBarRect = new Rect(
+                            new Vector2(screenRect.x + (screenRect.width * powerIconWidgetOffset.x) + (barWidth * 0.5f) - (barWidth * powerFactor), screenRect.y + (screenRect.height * powerIconWidgetOffset.y) - (barHeight * 0.5f)),
+                            new Vector2(barWidth * powerFactor, barHeight)
+                            );
+
+                        GUIUtility.RotateAroundPivot(90,new Vector2(screenRect.x + (screenRect.width * 0.5f), screenRect.y + (screenRect.height * 0.5f)));
+                    }
+                    else if (powerIconBarDirection == 1)
+                    {
+                        //left to right
+                        powerIconBarBaseRect = new Rect(
+                            new Vector2(screenRect.x + (screenRect.width * powerIconWidgetOffset.x) - (baseWidth * 0.5f), screenRect.y + (screenRect.height * powerIconWidgetOffset.y) - (baseHeight * 0.5f)),
+                            new Vector2(baseWidth, baseHeight)
+                            );
+
+                        powerIconBarRect = new Rect(
+                            new Vector2(screenRect.x + (screenRect.width * powerIconWidgetOffset.x) - (barWidth * 0.5f), screenRect.y + (screenRect.height * powerIconWidgetOffset.y) - (barHeight * 0.5f)),
+                            new Vector2(barWidth * powerFactor, barHeight)
+                            );
+                    }
+                    else
+                    {
+                        //from center
+                        powerIconBarBaseRect = new Rect(
+                            new Vector2(screenRect.x + (screenRect.width * powerIconWidgetOffset.x) - (baseWidth * 0.5f), screenRect.y + (screenRect.height * powerIconWidgetOffset.y) - (baseHeight * 0.5f)),
+                            new Vector2(baseWidth, baseHeight)
+                            );
+
+                        powerIconBarRect = new Rect(
+                            new Vector2(screenRect.x + (screenRect.width * powerIconWidgetOffset.x) - ((barWidth * 0.5f) * powerFactor), screenRect.y + (screenRect.height * powerIconWidgetOffset.y) - (barHeight * 0.5f)),
+                            new Vector2(barWidth * powerFactor, barHeight)
+                            );
+                    }
+
+                    if (Event.current.type == EventType.Repaint)
+                    {
+                        if (powerIconBarBase)
+                            DaggerfallUI.DrawTexture(powerIconBarBaseRect, powerIconBarBaseTexture, ScaleMode.StretchToFill, true, Color.white);
+                        DaggerfallUI.DrawTexture(powerIconBarRect, powerIconBarTexture, ScaleMode.StretchToFill, true, Color.white);
+                    }
+                }
+                else if (powerIconStyle == 2)
+                {
+                    //widget
                     powerIconWidgetBaseRect = new Rect(
                         new Vector2(screenRect.x + (screenRect.width * powerIconWidgetOffset.x) - (powerIconWidgetBaseTexture.width * 0.5f * scale * ScaleX), screenRect.y + (screenRect.height * powerIconWidgetOffset.y) - (powerIconWidgetBaseTexture.height * scale * 0.5f * ScaleY)),
                         new Vector2(powerIconWidgetBaseTexture.width * scale * ScaleX, powerIconWidgetBaseTexture.height * scale * ScaleY)
@@ -796,6 +1217,7 @@ public class WeaponFeatures : MonoBehaviour
                 }
                 else
                 {
+                    //crosshair
                     scale *= 0.5f;
 
                     powerIconCrosshairLeftRect = new Rect(
@@ -822,11 +1244,14 @@ public class WeaponFeatures : MonoBehaviour
         lastPower = Mathf.Lerp(powerMin,powerMax,powerCurrent/100)/100;
         powerCurrent -= powerCost;
 
-        Debug.Log("TOME OF BATTLE - POWER ATTACKS - MAX DRAW TIME IS " + powerMaxDrawTime.ToString() + " SECONDS!");
-        Debug.Log("TOME OF BATTLE - POWER ATTACKS - POWER SPEED IS " + powerSpeed.ToString("0") + "%!");
-        Debug.Log("TOME OF BATTLE - POWER ATTACKS - MIN POWER IS " + powerMin.ToString("0") + "%!");
-        Debug.Log("TOME OF BATTLE - POWER ATTACKS - MAX POWER IS " + powerMax.ToString("0") + "%!");
-        Debug.Log("TOME OF BATTLE - POWER ATTACKS - LAST POWER IS " + (LastPower*100).ToString("0") + "%!");
+        if (Instance.powerMessage)
+        {
+            Debug.Log("TOME OF BATTLE - POWER ATTACKS - MAX DRAW TIME IS " + powerMaxDrawTime.ToString() + " SECONDS!");
+            Debug.Log("TOME OF BATTLE - POWER ATTACKS - POWER SPEED IS " + powerSpeed.ToString("0") + "%!");
+            Debug.Log("TOME OF BATTLE - POWER ATTACKS - MIN POWER IS " + powerMin.ToString("0") + "%!");
+            Debug.Log("TOME OF BATTLE - POWER ATTACKS - MAX POWER IS " + powerMax.ToString("0") + "%!");
+            Debug.Log("TOME OF BATTLE - POWER ATTACKS - LAST POWER IS " + (LastPower * 100).ToString("0") + "%!");
+        }
     }
 
     void UpdatePower()
@@ -834,56 +1259,132 @@ public class WeaponFeatures : MonoBehaviour
         if (GameManager.IsGamePaused)
             return;
 
-        if (GameManager.Instance.WeaponManager.Sheathed || GameManager.Instance.WeaponManager.EquipCountdownRightHand > 0 || GameManager.Instance.WeaponManager.EquipCountdownLeftHand > 0 || lastUsedHand != GameManager.Instance.WeaponManager.UsingRightHand)
+        if ((GameManager.Instance.WeaponManager.Sheathed || GameManager.Instance.WeaponManager.EquipCountdownRightHand > 0 || GameManager.Instance.WeaponManager.EquipCountdownLeftHand > 0 || lastUsedHand != GameManager.Instance.WeaponManager.UsingRightHand || (ScreenWeapon.WeaponType == WeaponTypes.Bow && !reloaded)) && (!entityEffectManager.HasReadySpell && spellcastCasted))
         {
             powerCurrent = 0;
             lastUsedHand = GameManager.Instance.WeaponManager.UsingRightHand;
+            drawTimer = 0;
             powerIconWidgetColorCurrent = Color.black;
+            powerIconHideDelayTimer = 0;
             return;
         }
 
-        if (powerCurrent < 0)
-            powerCurrent = 0;
-
-        if (ScreenWeapon.WeaponType == WeaponTypes.Bow)
+        if (powerIconHideDelayTime > 0)
         {
-            if (DaggerfallUnity.Settings.BowDrawback)
+            if (powerCurrent >= 100)
+                powerIconHideDelayTimer += Time.deltaTime;
+            else
+                powerIconHideDelayTimer = 0;
+        }
+
+        if (playerMotor.IsJumping)
+        {
+            if (!jumped)
             {
-                //build power at a constant rate while bow is drawn, then decay after reaching max power
-                if (ScreenWeapon.WeaponState == WeaponStates.StrikeUp || ScreenWeapon.GetCurrentFrame() == 3)
+                jumped = true;
+                if (powerCurrent > 0)
+                    powerCurrent -= powerCurrent * 0.5f;
+            }
+        }
+        else
+        {
+            if (jumped)
+                jumped = false;
+        }
+
+        if ((playerMotor.IsRunning && !playerMotor.IsStandingStill))
+        {
+            if (ScreenWeapon.WeaponType == WeaponTypes.Bow)
+            {
+                if (DaggerfallUnity.Settings.BowDrawback)
                 {
-                    //powerDrawIcon = true;
-                    if (powerCurrent < 100 && drawTimer < powerMaxDrawTime)
+                    //build power at a constant rate while bow is drawn, then decay after reaching max power
+                    if (ScreenWeapon.WeaponState == WeaponStates.StrikeUp || ScreenWeapon.GetCurrentFrame() == 3)
                     {
-                        powerCurrent += Time.deltaTime * powerSpeed;
+                        if (powerCurrent > 0)
+                            powerCurrent -= Time.deltaTime * powerCost;
+                        else
+                            powerCurrent = 0;
                     }
-                    else if (drawTimer < powerMaxDrawTime)
+                }
+                else
+                {
+                    //oscillate power while ready to shoot
+                    if (reloaded)
                     {
-                        powerCurrent = 100;
-                    }
-                    else if (powerCurrent > 0)
-                    {
-                        powerCurrent -= Time.deltaTime * powerSpeed;
+                        drawTimer = 0;
+                        if (powerCurrent > 0)
+                            powerCurrent -= Time.deltaTime * powerCost;
+                        else
+                            powerCurrent = 0;
                     }
                 }
             }
             else
             {
-                //oscillate power while not attacking
-                powerCurrent = Mathf.Lerp(0,100,0.5f + (Mathf.Sin(Time.time * (powerSpeed*0.05f))*0.5f));
+                if (powerCurrent > 0)
+                    powerCurrent -= Time.deltaTime * powerCost;
+                else
+                    powerCurrent = 0;
             }
         }
         else
         {
-            //build power at a constant rate while not attacking
-            if (!ScreenWeapon.IsAttacking())
+            if (entityEffectManager.HasReadySpell)
             {
                 if (powerCurrent < 100)
                     powerCurrent += Time.deltaTime * powerSpeed;
                 else
                     powerCurrent = 100;
             }
+            else if (ScreenWeapon.WeaponType == WeaponTypes.Bow)
+            {
+                if (DaggerfallUnity.Settings.BowDrawback)
+                {
+                    //build power at a constant rate while bow is drawn, then decay after reaching max power
+                    if (ScreenWeapon.WeaponState == WeaponStates.StrikeUp || ScreenWeapon.GetCurrentFrame() == 3)
+                    {
+                        //powerDrawIcon = true;
+                        if (powerCurrent < 100 && drawTimer < powerMaxDrawTime)
+                        {
+                            powerCurrent += Time.deltaTime * powerSpeed;
+                        }
+                        else if (drawTimer < powerMaxDrawTime)
+                        {
+                            powerCurrent = 100;
+                        }
+                        else if (powerCurrent > 0)
+                        {
+                            powerCurrent -= Time.deltaTime * powerSpeed;
+                        }
+                    }
+                }
+                else
+                {
+                    //oscillate power while ready to shoot
+                    if (reloaded)
+                    {
+                        drawTimer += Time.deltaTime;
+                        powerCurrent = Mathf.Lerp(0, 100,(0.5f * (powerMaxDrawTime / 8.5f)) + (Mathf.Sin(drawTimer * (powerSpeed / 100)) * 0.75f));
+                    }
+
+                }
+            }
+            else
+            {
+                //build power at a constant rate while not attacking
+                if (!ScreenWeapon.IsAttacking())
+                {
+                    if (powerCurrent < 100)
+                        powerCurrent += Time.deltaTime * powerSpeed;
+                    else
+                        powerCurrent = 100;
+                }
+            }
         }
+
+        if (powerCurrent < 0)
+            powerCurrent = 0;
 
         powerIconWidgetColorCurrent = Color.Lerp(powerIconWidgetColorMin, powerIconWidgetColorMax, Mathf.Round((powerCurrent / 100) * 10) / 10);
     }
@@ -917,12 +1418,122 @@ public class WeaponFeatures : MonoBehaviour
             }
         }
 
-        if (GameManager.IsGamePaused || !GameManager.Instance.IsPlayingGame() || !GameManager.Instance.IsPlayerOnHUD)
-            blockHoldInput = true;
-        else
+        if (spellcast > 0)
         {
-            if (!InputManager.Instance.GetKey(attackKeyCode))
-                blockHoldInput = false;
+            if (entityEffectManager.HasReadySpell)
+            {
+                if (spellcastReadyObject == null || entityEffectManager.ReadySpell != lastReadySpell)
+                {
+                    lastReadySpell = entityEffectManager.ReadySpell;
+
+                    //spawn effect
+                    int element = 375;
+                    Color lightColor = Color.white;
+                    switch (entityEffectManager.ReadySpell.Settings.ElementType)
+                    {
+                        case ElementTypes.Fire:
+                            element = 375;
+                            lightColor = new Color(0.6f,0.09f,0.03f);
+                            break;
+                        case ElementTypes.Cold:
+                            element = 376;
+                            lightColor = new Color(0.61f, 0.79f, 0.79f);
+                            break;
+                        case ElementTypes.Poison:
+                            element = 377;
+                            lightColor = new Color(0.39f, 0.62f, 0.23f);
+                            break;
+                        case ElementTypes.Shock:
+                            element = 378;
+                            lightColor = new Color(0.26f, 0.48f, 0.75f);
+                            break;
+                        case ElementTypes.Magic:
+                            element = 379;
+                            lightColor = new Color(0.39f, 0.53f, 0.47f);
+                            break;
+                    }
+
+                    if (spellcastReadyObject != null)
+                        Destroy(spellcastReadyObject);
+
+                    spellcastReadyObject = GameObjectHelper.CreateDaggerfallBillboardGameObject(element,0,GameObjectHelper.GetBestParent());
+                    spellcastReadyObject.transform.localScale *= 0.5f;
+
+                    Light light = spellcastReadyObject.AddComponent<Light>();
+                    light.type = LightType.Point;
+                    light.range = 12;
+                    light.color = lightColor;
+                    light.shadows = (DaggerfallUnity.Settings.EnableSpellShadows) ? LightShadows.Soft : LightShadows.None;
+
+                    AudioSource audioSource = spellcastReadyObject.AddComponent<AudioSource>();
+                    audioSource.clip = DaggerfallUI.Instance.DaggerfallAudioSource.GetAudioClip(440);
+                    audioSource.loop = true;
+                    audioSource.volume = DaggerfallUnity.Settings.SoundVolume;
+                    audioSource.pitch = 0.5f;
+                    audioSource.spatialBlend = 0f;
+                    audioSource.Play();
+
+                    if (powerAttacks && spellcastPower)
+                    {
+                        powerCurrent = 0;
+
+                        //record spell magic skills average
+                        readySpellMagicSkillAverage = 0;
+                        EntityEffectBundle readySpell = entityEffectManager.ReadySpell;
+                        List<DFCareer.MagicSkills> readySpellMagicSkills = new List<DFCareer.MagicSkills>();
+                        for (int i = 0; i < readySpell.Settings.Effects.Length; i++)
+                        {
+                            IEntityEffect effect = GameManager.Instance.EntityEffectBroker.GetEffectTemplate(readySpell.Settings.Effects[i].Key);
+                            if (effect != null)
+                            {
+                                if (!readySpellMagicSkills.Contains(effect.Properties.MagicSkill))
+                                {
+                                    readySpellMagicSkillAverage += playerEntity.Skills.GetLiveSkillValue((DFCareer.Skills)effect.Properties.MagicSkill);
+                                    readySpellMagicSkills.Add(effect.Properties.MagicSkill);
+                                }
+                            }
+                        }
+                        readySpellMagicSkillAverage /= readySpellMagicSkills.Count;
+
+                    }
+
+                    spellcastCasted = false;
+
+                    if (OnSpellReady != null)
+                        OnSpellReady(spellcastReadyObject, entityEffectManager.ReadySpell);
+                }
+                else
+                {
+                    //animate effect
+                    spellcastReadyObject.transform.position = GetEyePos + ((playerCamera.transform.forward - playerController.transform.up) * 0.5f);
+                }
+            }
+            else
+            {
+                if (spellcastReadyObject != null)
+                {
+                    if (fpsSpellCasting.IsPlayingAnim)
+                    {
+                        if (!spellcastCasted)
+                        {
+                            //player has started casting a spell
+
+                            if (powerAttacks && spellcastPower)
+                                SetPower();
+
+                            if (OnSpellCast != null)
+                                OnSpellCast(entityEffectManager.ReadySpell);
+
+                            spellcastCasted = true;
+                        }
+                    }
+
+                    //destroy effect
+                    Destroy(spellcastReadyObject);
+
+                    lastReadySpell = null;
+                }
+            }
         }
 
         if (!reloaded)
@@ -931,6 +1542,14 @@ public class WeaponFeatures : MonoBehaviour
                 reloadTimer += Time.deltaTime;
             else
                 reloaded = true;
+        }
+
+        if (GameManager.IsGamePaused || !GameManager.Instance.IsPlayingGame() || !GameManager.Instance.IsPlayerOnHUD)
+            blockHoldInput = true;
+        else
+        {
+            if (!InputManager.Instance.GetKey(attackKeyCode))
+                blockHoldInput = false;
         }
 
         //Dampen view speed when swinging a weapon
@@ -1034,6 +1653,12 @@ public class WeaponFeatures : MonoBehaviour
             //attack has finished
             if (isAttacking)
             {
+                /*if (isDualWielding)
+                {
+                    InputManager.Instance.AddAction(InputManager.Actions.SwitchHand);
+                    swingCount--;
+                }*/
+
                 attackTarget = null;
                 attackDamage = 0;
                 isAttacking = false;
@@ -1056,6 +1681,11 @@ public class WeaponFeatures : MonoBehaviour
                         if (lineRenderer.enabled)
                             lineRenderer.enabled = false;
                     }
+                }
+                else
+                {
+                    if (lineRenderer.enabled)
+                        lineRenderer.enabled = false;
                 }
 
                 //reset swing count after interval
@@ -1092,42 +1722,86 @@ public class WeaponFeatures : MonoBehaviour
                                 }
                                 else
                                 {
-                                    if (playerMotor.IsMovingLessThanHalfSpeed)
+                                    if (weaponManager.UsingRightHand)
                                     {
-                                        //do alternating horizontal swings while moving at half-speed or less
-                                        if (weaponManager.ScreenWeapon.FlipHorizontal)
+                                        if (playerMotor.IsMovingLessThanHalfSpeed)
                                         {
-                                            swingDirection = WeaponManager.MouseDirections.Right;
+                                            //do alternating horizontal swings while moving at half-speed or less
+                                            if (weaponManager.ScreenWeapon.FlipHorizontal)
+                                            {
+                                                swingDirection = WeaponManager.MouseDirections.Right;
 
-                                            if (swingCount % 2 != 0)
+                                                if (swingCount % 2 != 0)
+                                                    swingDirection = WeaponManager.MouseDirections.Left;
+                                            }
+                                            else
+                                            {
                                                 swingDirection = WeaponManager.MouseDirections.Left;
+
+                                                if (swingCount % 2 != 0)
+                                                    swingDirection = WeaponManager.MouseDirections.Right;
+                                            }
                                         }
                                         else
                                         {
-                                            swingDirection = WeaponManager.MouseDirections.Left;
+                                            //do alternating horizontal swings while moving at half-speed or less
+                                            if (weaponManager.ScreenWeapon.FlipHorizontal)
+                                            {
+                                                //do alternating diagonal swings if moving normally
+                                                swingDirection = WeaponManager.MouseDirections.DownRight;
 
-                                            if (swingCount % 2 != 0)
-                                                swingDirection = WeaponManager.MouseDirections.Right;
+                                                if (swingCount % 2 != 0)
+                                                    swingDirection = WeaponManager.MouseDirections.DownLeft;
+                                            }
+                                            else
+                                            {
+                                                //do alternating diagonal swings if moving normally
+                                                swingDirection = WeaponManager.MouseDirections.DownLeft;
+
+                                                if (swingCount % 2 != 0)
+                                                    swingDirection = WeaponManager.MouseDirections.DownRight;
+                                            }
                                         }
                                     }
                                     else
                                     {
-                                        //do alternating horizontal swings while moving at half-speed or less
-                                        if (weaponManager.ScreenWeapon.FlipHorizontal)
+                                        if (playerMotor.IsMovingLessThanHalfSpeed)
                                         {
-                                            //do alternating diagonal swings if moving normally
-                                            swingDirection = WeaponManager.MouseDirections.DownRight;
+                                            //do alternating horizontal swings while moving at half-speed or less
+                                            if (weaponManager.ScreenWeapon.FlipHorizontal)
+                                            {
+                                                swingDirection = WeaponManager.MouseDirections.Left;
 
-                                            if (swingCount % 2 != 0)
-                                                swingDirection = WeaponManager.MouseDirections.DownLeft;
+                                                if (swingCount % 2 != 0)
+                                                    swingDirection = WeaponManager.MouseDirections.Right;
+                                            }
+                                            else
+                                            {
+                                                swingDirection = WeaponManager.MouseDirections.Right;
+
+                                                if (swingCount % 2 != 0)
+                                                    swingDirection = WeaponManager.MouseDirections.Left;
+                                            }
                                         }
                                         else
                                         {
-                                            //do alternating diagonal swings if moving normally
-                                            swingDirection = WeaponManager.MouseDirections.DownLeft;
+                                            //do alternating horizontal swings while moving at half-speed or less
+                                            if (weaponManager.ScreenWeapon.FlipHorizontal)
+                                            {
+                                                //do alternating diagonal swings if moving normally
+                                                swingDirection = WeaponManager.MouseDirections.DownLeft;
 
-                                            if (swingCount % 2 != 0)
+                                                if (swingCount % 2 != 0)
+                                                    swingDirection = WeaponManager.MouseDirections.DownRight;
+                                            }
+                                            else
+                                            {
+                                                //do alternating diagonal swings if moving normally
                                                 swingDirection = WeaponManager.MouseDirections.DownRight;
+
+                                                if (swingCount % 2 != 0)
+                                                    swingDirection = WeaponManager.MouseDirections.DownLeft;
+                                            }
                                         }
                                     }
                                 }
@@ -1151,9 +1825,9 @@ public class WeaponFeatures : MonoBehaviour
                                             swingDirection = WeaponManager.MouseDirections.Left;
                                     }
                                 }
-                                else if (InputManager.Instance.Vertical > 0 && Mathf.Abs(InputManager.Instance.Horizontal) == 0)
+                                else if (InputManager.Instance.Vertical != 0 && Mathf.Abs(InputManager.Instance.Horizontal) == 0)
                                 {
-                                    //do a thrust if moving forward
+                                    //do a thrust if moving forward or backeard
                                     swingDirection = WeaponManager.MouseDirections.Up;
                                 }
                                 else
@@ -1228,6 +1902,13 @@ public class WeaponFeatures : MonoBehaviour
 
     void DrawTrajectory()
     {
+        if (ScreenWeapon.SpecificWeapon.ConditionPercentage <= 0)
+        {
+            if (lineRenderer.enabled)
+                lineRenderer.enabled = false;
+            return;
+        }
+
         if (!lineRenderer.enabled)
             lineRenderer.enabled = true;
 
@@ -1235,19 +1916,33 @@ public class WeaponFeatures : MonoBehaviour
 
         //get start
         Vector3 start = GetEyePos;
-        // Adjust slightly downward to match bow animation
-        Vector3 adjust = (GameManager.Instance.MainCamera.transform.rotation * -GameManager.Instance.PlayerObject.transform.up) * 0.11f;
-        // Offset forward to avoid collision with player
-        adjust += GameManager.Instance.MainCamera.transform.forward * 0.6f;
-        // Adjust to the right or left to match bow animation
-        if (!GameManager.Instance.WeaponManager.ScreenWeapon.FlipHorizontal)
-            adjust += GameManager.Instance.MainCamera.transform.right * 0.15f;
-        else
-            adjust -= GameManager.Instance.MainCamera.transform.right * 0.15f;
-        start += adjust;
-        positions.Add(start);
 
         Vector3 dir = Quaternion.AngleAxis(-archeryMissileAngleTyped, GameManager.Instance.MainCameraObject.transform.right) * playerCamera.transform.forward;
+        if (GameManager.Instance.PlayerMouseLook.cursorActive)
+        {
+            /*Vector2 mousePosition = new Vector2(InputManager.Instance.MousePosition.x, InputManager.Instance.MousePosition.y);
+            Vector3 forward = GameManager.Instance.MainCamera.ScreenPointToRay(mousePosition).direction;*/
+            Vector2 mousePosition = new Vector2((InputManager.Instance.MousePosition.x - screenRect.x) / screenRect.width, (InputManager.Instance.MousePosition.y - screenRect.y) / screenRect.height);
+            if (DaggerfallUnity.Settings.LargeHUD)
+                mousePosition.y = (InputManager.Instance.MousePosition.y - screenRect.y - DaggerfallUI.Instance.DaggerfallHUD.LargeHUD.ScreenHeight) / screenRect.height;
+            Vector3 forward = GameManager.Instance.MainCamera.ViewportPointToRay(mousePosition).direction;
+            dir = (Quaternion.AngleAxis(-archeryMissileAngleTyped, GameManager.Instance.MainCameraObject.transform.right) * forward).normalized;
+        }
+        else
+        {
+            // Adjust slightly downward to match bow animation
+            Vector3 adjust = (GameManager.Instance.MainCamera.transform.rotation * -GameManager.Instance.PlayerObject.transform.up) * 0.11f;
+            // Offset forward to avoid collision with player
+            adjust += GameManager.Instance.MainCamera.transform.forward * 0.6f;
+            // Adjust to the right or left to match bow animation
+            if (!GameManager.Instance.WeaponManager.ScreenWeapon.FlipHorizontal)
+                adjust += GameManager.Instance.MainCamera.transform.right * 0.15f;
+            else
+                adjust -= GameManager.Instance.MainCamera.transform.right * 0.15f;
+            start += adjust;
+        }
+
+        positions.Add(start);
 
         Vector3 startStep = dir * archeryMissileSpeedTyped * Mathf.Clamp(drawTimer / archeryOverdrawTimeTyped, 0.5f, 2f);
 
@@ -1310,7 +2005,10 @@ public class WeaponFeatures : MonoBehaviour
         }
 
         archeryAmmoCount = count;
-        archeryAmmoLabel = items[0].ItemName + " (" + archeryAmmoCount.ToString() + ")";
+        if (archeryAmmoCounter == 2)
+            archeryAmmoLabel = items[0].ItemName + " (" + archeryAmmoCount.ToString() + ")";
+        else
+            archeryAmmoLabel = archeryAmmoCount.ToString();
 
         //get label length;
     }
@@ -1352,6 +2050,7 @@ public class WeaponFeatures : MonoBehaviour
     bool CanAttack()
     {
         if (GameManager.IsGamePaused ||
+            GameManager.Instance.PlayerEntity.CurrentHealth <= 0 ||
             GameManager.Instance.PlayerEntity.IsParalyzed ||
             GameManager.Instance.ClimbingMotor.IsClimbing ||
             GameManager.Instance.PlayerEffectManager.HasReadySpell ||
@@ -1377,9 +2076,21 @@ public class WeaponFeatures : MonoBehaviour
                 itemGroup = ItemGroups.UselessItems2;
 
             ItemCollection playerItems = playerEntity.Items;
-            DaggerfallUnityItem arrow = playerItems.GetItem(itemGroup, archeryItemTemplate, allowQuestItem: false, priorityToConjured: true);
-            bool isArrowSummoned = arrow.IsSummoned;
-            playerItems.RemoveOne(arrow);
+            DaggerfallUnityItem arrow;
+            bool isArrowSummoned = false;
+            if (archeryItemTemplate < 0)
+            {
+                //use up equipped item condition
+                arrow = ScreenWeapon.SpecificWeapon;
+                arrow.LowerCondition((int)Mathf.Abs(archeryItemTemplate));
+            }
+            else
+            {
+                arrow = playerItems.GetItem(itemGroup, archeryItemTemplate, allowQuestItem: false, priorityToConjured: true);
+                isArrowSummoned = arrow.IsSummoned;
+                playerItems.RemoveOne(arrow);
+            }
+
             UpdateAmmoCount();
 
             if (archery > 0)
@@ -1402,8 +2113,33 @@ public class WeaponFeatures : MonoBehaviour
                 missileCustom.ElementType = ElementTypes.None;
                 missileCustom.IsArrow = true;
                 missileCustom.IsArrowSummoned = isArrowSummoned;
-                missileCustom.CustomAimPosition = GetEyePos;
-                missileCustom.CustomAimDirection = (Quaternion.AngleAxis(-archeryMissileAngleTyped + (archeryMissileSpreadTyped * UnityEngine.Random.Range(-1f, 1f)), GameManager.Instance.MainCameraObject.transform.right) * playerCamera.transform.forward).normalized;
+                if (GameManager.Instance.PlayerMouseLook.cursorActive)
+                {
+                    missileCustom.CustomAimPosition = GetEyePos;
+
+                    /*Vector2 mousePosition = new Vector2(InputManager.Instance.MousePosition.x, InputManager.Instance.MousePosition.y);
+                    Vector3 forward = GameManager.Instance.MainCamera.ScreenPointToRay(mousePosition).direction;*/
+                    Vector2 mousePosition = new Vector2((InputManager.Instance.MousePosition.x - screenRect.x) / screenRect.width, (InputManager.Instance.MousePosition.y - screenRect.y) / screenRect.height);
+                    if (DaggerfallUnity.Settings.LargeHUD)
+                        mousePosition.y = (InputManager.Instance.MousePosition.y - screenRect.y - DaggerfallUI.Instance.DaggerfallHUD.LargeHUD.ScreenHeight) / screenRect.height;
+                    Vector3 forward = GameManager.Instance.MainCamera.ViewportPointToRay(mousePosition).direction;
+                    missileCustom.CustomAimDirection = (Quaternion.AngleAxis(-archeryMissileAngleTyped + (archeryMissileSpreadTyped * UnityEngine.Random.Range(-1f, 1f)), GameManager.Instance.MainCameraObject.transform.right) * forward).normalized;
+                }
+                else
+                {
+                    // Adjust slightly downward to match bow animation
+                    Vector3 adjust = (GameManager.Instance.MainCamera.transform.rotation * -GameManager.Instance.PlayerObject.transform.up) * 0.11f;
+                    // Offset forward to avoid collision with player
+                    adjust += GameManager.Instance.MainCamera.transform.forward * 0.6f;
+                    // Adjust to the right or left to match bow animation
+                    if (!GameManager.Instance.WeaponManager.ScreenWeapon.FlipHorizontal)
+                        adjust += GameManager.Instance.MainCamera.transform.right * 0.15f;
+                    else
+                        adjust -= GameManager.Instance.MainCamera.transform.right * 0.15f;
+                    missileCustom.CustomAimPosition = GetEyePos + adjust;
+
+                    missileCustom.CustomAimDirection = (Quaternion.AngleAxis(-archeryMissileAngleTyped + (archeryMissileSpreadTyped * UnityEngine.Random.Range(-1f, 1f)), GameManager.Instance.MainCameraObject.transform.right) * playerCamera.transform.forward).normalized;
+                }
             }
             else
             {
@@ -1448,6 +2184,8 @@ public class WeaponFeatures : MonoBehaviour
             ModManager.Instance.SendModMessage(ceh.Title, "onSavingThrow", (Action<DFCareer.Elements, DFCareer.EffectFlags, DaggerfallEntity, int>)OnSavingThrow);
         }
 
+        RoleplayAndRealismItems = ModManager.Instance.GetModFromGUID("68589945-3fbb-4d58-81a3-3066f3f08539");
+
         SphincterVisionAttacks = ModManager.Instance.GetModFromGUID("28faf48c-9fe1-46a9-b155-fefc71547e26");
 
         mod.LoadSettings();
@@ -1459,6 +2197,18 @@ public class WeaponFeatures : MonoBehaviour
     {
         if (OnMissileHit != null)
             OnMissileHit(missileObject, ScreenWeapon.SpecificWeapon, hitObject, hitPoint);
+    }
+
+    public void RaiseOnSpellHitEvent(GameObject missileObject, EntityEffectBundle payload, GameObject hitObject, Vector3 hitPoint)
+    {
+        if (OnSpellHit != null)
+            OnSpellHit(missileObject, payload, hitObject, hitPoint);
+    }
+
+    public void RaiseOnSpellAffectEvent(EntityEffectBundle effect, GameObject targetObject)
+    {
+        if (OnSpellAffect != null)
+            OnSpellAffect(effect,targetObject);
     }
 
     public void OnAttackDamageCalculated(DaggerfallEntity attacker, DaggerfallEntity target, DaggerfallUnityItem weapon, int bodyPart, int damage)
@@ -1494,6 +2244,11 @@ public class WeaponFeatures : MonoBehaviour
                     PauseEnemy(attacker, target);
                 }
             }
+        }
+        else
+        {
+            if (feedbackKnockback)
+                KnockbackPlayer(attacker,damage);
         }
     }
 
@@ -1554,7 +2309,7 @@ public class WeaponFeatures : MonoBehaviour
         if (enemy.MobileEnemy.Behaviour != MobileBehaviour.Flying && enemy.MobileEnemy.Behaviour != MobileBehaviour.Aquatic && enemy.MobileEnemy.Behaviour != MobileBehaviour.Spectral)
             direction = (Vector3.down + direction.normalized).normalized;
 
-        StartCoroutine(DodgeEnemyCoroutine(target,direction));
+        StartCoroutine(DodgeEnemyCoroutine(target,direction, 0.2f));
     }
 
     void PauseEnemy(DaggerfallEntity attacker, DaggerfallEntity target)
@@ -1564,18 +2319,38 @@ public class WeaponFeatures : MonoBehaviour
 
     IEnumerator DodgeEnemyCoroutine(DaggerfallEntity target, Vector3 direction, float time = 0.1f)
     {
+        MobileUnit mobile = target.EntityBehaviour.GetComponentInChildren<MobileUnit>();
         EnemyMotor enemyMotor = target.EntityBehaviour.GetComponent<EnemyMotor>();
         CharacterController controller = enemyMotor.GetComponent<CharacterController>();
+
+        enemyMotor.enabled = false;
+
+        if (!mobile.IsPlayingOneShot())
+        {
+            mobile.ChangeEnemyState(MobileStates.PrimaryAttack);
+            yield return new WaitForEndOfFrame();
+            mobile.FreezeAnims = true;
+        }
 
         float currentTime = 0;
         while (currentTime < time)
         {
-            controller.SimpleMove(direction.normalized * 3 * feedbackDodgeScale);
+            controller.SimpleMove(direction.normalized * 10 * feedbackDodgeScale);
 
             currentTime += Time.deltaTime;
 
             yield return new WaitForEndOfFrame();
         }
+
+        if (mobile.IsPlayingOneShot())
+        {
+            mobile.FreezeAnims = false;
+            yield return new WaitForEndOfFrame();
+            mobile.ChangeEnemyState(MobileStates.Idle);
+        }
+
+
+        enemyMotor.enabled = true;
 
         enemyMotor.KnockbackDirection = Vector3.zero;
         enemyMotor.KnockbackSpeed = 0;
@@ -1584,6 +2359,7 @@ public class WeaponFeatures : MonoBehaviour
     IEnumerator PauseEnemyCoroutine(DaggerfallEntity target, float time = 1)
     {
         MobileUnit mobile = target.EntityBehaviour.GetComponentInChildren<MobileUnit>();
+        EnemyMotor motor = target.EntityBehaviour.GetComponentInChildren<EnemyMotor>();
 
         if (mobile.EnemyState == MobileStates.Move || mobile.EnemyState == MobileStates.Idle)
         {
@@ -1591,13 +2367,13 @@ public class WeaponFeatures : MonoBehaviour
 
             Vector3 pos = target.EntityBehaviour.transform.position;
 
+            motor.enabled = false;
+
             float currentTime = 0;
             while (currentTime < time)
             {
-                if (mobile.IsPlayingOneShot())
+                if (mobile == null || mobile.IsPlayingOneShot())
                     break;
-
-                yield return new WaitForEndOfFrame();
 
                 if (mobile.EnemyState == MobileStates.Move)
                 {
@@ -1606,7 +2382,10 @@ public class WeaponFeatures : MonoBehaviour
                 }
 
                 currentTime += Time.deltaTime;
+                yield return new WaitForEndOfFrame();
             }
+
+            motor.enabled = true;
         }
         else
             yield return new WaitForEndOfFrame();
@@ -1631,6 +2410,45 @@ public class WeaponFeatures : MonoBehaviour
         enemyMotor.KnockbackDirection = direction.normalized * 0.1f;
     }
 
+    void KnockbackPlayer(DaggerfallEntity attacker, int damage)
+    {
+        Vector3 direction = GameManager.Instance.PlayerObject.transform.position - attacker.EntityBehaviour.transform.position;
+        float factor = (float)damage / (float)GameManager.Instance.PlayerEntity.MaxHealth;
+        float magnitude = 10f * factor;
+        float duration = 1f * factor;
+
+        if (knockbacking != null)
+            StopCoroutine(knockbacking);
+
+        knockbacking = KnockbackPlayerCoroutine(direction.normalized, magnitude * feedbackKnockbackMagnitudeMod, duration * feedbackKnockbackDurationMod);
+        StartCoroutine(knockbacking);
+    }
+
+    IEnumerator KnockbackPlayerCoroutine(Vector3 direction, float magnitude = 10f, float duration = 0.5f)
+    {
+        Debug.Log("TOME OF BATTLE - KNOCKBACK COROUTINE STARTED WITH MAGNITUDE " + magnitude.ToString() + "  AND DURATION " + duration.ToString());
+
+        float time = duration;
+        float t = 0;
+        float factor = 0;
+        Vector3 dirLocal = Vector3.zero;
+
+        while (time > 0)
+        {
+            dirLocal = GameManager.Instance.PlayerObject.transform.InverseTransformDirection(direction).normalized * magnitude;
+            t = time / duration;
+            factor = t * t * t * (t * (6f * t - 15f) + 10f);
+            InputManager.Instance.ApplyHorizontalForce(dirLocal.x * factor);
+            InputManager.Instance.ApplyVerticalForce(dirLocal.z * factor);
+
+            time -= Time.deltaTime;
+
+            yield return new WaitForEndOfFrame();
+        }
+
+        knockbacking = null;
+    }
+
     IEnumerator DoCleaveOnNextFrame()
     {
         ScreenWeapon.PlaySwingSound();
@@ -1642,6 +2460,7 @@ public class WeaponFeatures : MonoBehaviour
 
     float GetWeaponReach()
     {
+
         float reach = 0f;
 
         if (ScreenWeapon.WeaponType == WeaponTypes.Melee)
@@ -1661,6 +2480,9 @@ public class WeaponFeatures : MonoBehaviour
 
             return reach * reachMultiplier;
         }
+
+        if (customWeaponOverrides.ContainsKey(ScreenWeapon.SpecificWeapon.TemplateIndex))
+            return Mathf.RoundToInt(customWeaponOverrides[ScreenWeapon.SpecificWeapon.TemplateIndex].Reach * reachMultiplier);
 
         switch (ScreenWeapon.SpecificWeapon.TemplateIndex)
         {
@@ -1707,6 +2529,7 @@ public class WeaponFeatures : MonoBehaviour
 
     int GetWeaponCleave()
     {
+
         int cleave = 200;
 
         if (ScreenWeapon.WeaponType == WeaponTypes.Melee)
@@ -1726,6 +2549,9 @@ public class WeaponFeatures : MonoBehaviour
 
             return Mathf.RoundToInt(cleave * cleaveValueMultiplier);
         }
+
+        if (customWeaponOverrides.ContainsKey(ScreenWeapon.SpecificWeapon.TemplateIndex))
+            return Mathf.RoundToInt(customWeaponOverrides[ScreenWeapon.SpecificWeapon.TemplateIndex].Cleave * cleaveValueMultiplier);
 
         switch (ScreenWeapon.SpecificWeapon.TemplateIndex)
         {
@@ -1798,16 +2624,18 @@ public class WeaponFeatures : MonoBehaviour
 
         //construct the bounds
         float x = weaponReach;
-        float y = 0.25f;
+        float y = weaponColliderDepth;
         float z = weaponReach * 0.5f;
 
         //if thrusting, increase the weapon reach but halve the cleave value
         if (swingDirection == WeaponStates.StrikeUp)
         {
+            weaponReach *= 1.25f;
+
             cleaveValue = Mathf.RoundToInt(cleaveValue * 0.5f);
-            x = 0.25f;
-            y = 0.25f;
-            z = weaponReach * 0.625f;
+            x = weaponColliderDepth;
+            y = weaponColliderDepth;
+            z = weaponReach * 0.5f;
         }
 
         Vector3 scale = new Vector3(x, y, z);
@@ -1829,7 +2657,11 @@ public class WeaponFeatures : MonoBehaviour
         List<Transform> transforms = new List<Transform>();
 
         //overlap box using bounds + player position + camera rotation
+
+#if (UNITY_EDITOR)
         DrawBox(pos,rot,scale,Color.red, 3);
+#endif
+
         Collider[] colliders = Physics.OverlapBox(pos, scale, rot, layerMask);
 
         //get entities inside box, exclude original target, if any
@@ -1991,15 +2823,28 @@ public class WeaponFeatures : MonoBehaviour
             yield return new WaitForSeconds(interval);
         }
 
-        // Tally skills if attack targeted at least one enemy
         if (cleaves > 0)
         {
-            if (ScreenWeapon.WeaponType == WeaponTypes.Melee || ScreenWeapon.WeaponType == WeaponTypes.Werecreature)
-                playerEntity.TallySkill(DFCareer.Skills.HandToHand, 1);
-            else
-                playerEntity.TallySkill(ScreenWeapon.SpecificWeapon.GetWeaponSkillID(), 1);
+            if (cleaveMultiXP)
+            {
+                // Tally skills per enemy targeted by attack
+                if (ScreenWeapon.WeaponType == WeaponTypes.Melee || ScreenWeapon.WeaponType == WeaponTypes.Werecreature)
+                    playerEntity.TallySkill(DFCareer.Skills.HandToHand, (short)cleaves);
+                else
+                    playerEntity.TallySkill(ScreenWeapon.SpecificWeapon.GetWeaponSkillID(), (short)cleaves);
 
-            playerEntity.TallySkill(DFCareer.Skills.CriticalStrike, 1);
+                playerEntity.TallySkill(DFCareer.Skills.CriticalStrike, (short)cleaves);
+            }
+            else
+            {
+                // Tally skills if attack targeted at least one enemy
+                if (ScreenWeapon.WeaponType == WeaponTypes.Melee || ScreenWeapon.WeaponType == WeaponTypes.Werecreature)
+                    playerEntity.TallySkill(DFCareer.Skills.HandToHand, 1);
+                else
+                    playerEntity.TallySkill(ScreenWeapon.SpecificWeapon.GetWeaponSkillID(), 1);
+
+                playerEntity.TallySkill(DFCareer.Skills.CriticalStrike, 1);
+            }
         }
 
         cleaving = null;
@@ -2070,6 +2915,65 @@ public class WeaponFeatures : MonoBehaviour
         Debug.DrawRay(m.GetPosition(), m.GetUp(), Color.yellow);
         Debug.DrawRay(m.GetPosition(), m.GetRight(), Color.red);*/
     }
+    public void DrawWireCapsule(Vector3 point1, Vector3 point2, float radius, Color color, float duration)
+    {
+        Vector3 upOffset = point2 - point1;
+        Vector3 up = upOffset.Equals(default) ? Vector3.up : upOffset.normalized;
+        Quaternion orientation = Quaternion.FromToRotation(Vector3.up, up);
+        Vector3 forward = orientation * Vector3.forward;
+        Vector3 right = orientation * Vector3.right;
+        //draw sphere at p1
+        DrawWireSphere(point1, radius, color, duration);
+        DrawWireSphere(point2, radius, color, duration);
+        //draw sphere at p2
+        // z axis
+        Debug.DrawLine(point1 + right * radius, point2 + right * radius, color, duration);
+        Debug.DrawLine(point1 - right * radius, point2 - right * radius, color, duration);
+        // x axis
+        Debug.DrawLine(point1 + forward * radius, point2 + forward * radius, color, duration);
+        Debug.DrawLine(point1 - forward * radius, point2 - forward * radius, color, duration);
+    }
+    public static void DrawWireSphere(Vector3 center, float radius, Color color, float duration, int quality = 3)
+    {
+        quality = Mathf.Clamp(quality, 1, 10);
+
+        int segments = quality << 2;
+        int subdivisions = quality << 3;
+        int halfSegments = segments >> 1;
+        float strideAngle = 360F / subdivisions;
+        float segmentStride = 180F / segments;
+
+        Vector3 first;
+        Vector3 next;
+        for (int i = 0; i < segments; i++)
+        {
+            first = (Vector3.forward * radius);
+            first = Quaternion.AngleAxis(segmentStride * (i - halfSegments), Vector3.right) * first;
+
+            for (int j = 0; j < subdivisions; j++)
+            {
+                next = Quaternion.AngleAxis(strideAngle, Vector3.up) * first;
+                UnityEngine.Debug.DrawLine(first + center, next + center, color, duration);
+                first = next;
+            }
+        }
+
+        Vector3 axis;
+        for (int i = 0; i < segments; i++)
+        {
+            first = (Vector3.forward * radius);
+            first = Quaternion.AngleAxis(segmentStride * (i - halfSegments), Vector3.up) * first;
+            axis = Quaternion.AngleAxis(90F, Vector3.up) * first;
+
+            for (int j = 0; j < subdivisions; j++)
+            {
+                next = Quaternion.AngleAxis(strideAngle, axis) * first;
+                UnityEngine.Debug.DrawLine(first + center, next + center, color, duration);
+                first = next;
+            }
+        }
+    }
+
 
     WeaponManager.MouseDirections TrackMouseAttack()
     {
@@ -2213,9 +3117,183 @@ public class WeaponFeatures : MonoBehaviour
         conflict = null;
     }
 
+    public void OnReleaseFrame()
+    {
+        Debug.Log("TOME OF BATTLE - WAR MAGIC - ON RELEASE FRAME");
+
+        EntityEffectManager_CastInProgress.SetValue(entityEffectManager, false);
+
+        // Must have a ready spell
+        if (entityEffectManager.ReadySpell == null)
+            return;
+
+        //if spell is not self-target with a concealment effect, break normal concealment
+        if (playerEntity.IsMagicallyConcealedNormalPower)
+        {
+            Debug.Log("WAR MAGIC - BREAKING NORMAL CONCEALMENT EFFECT");
+            EntityEffectManager.BreakNormalPowerConcealmentEffects(playerEntity.EntityBehaviour);
+        }
+
+        EntityEffectBundle spell = new EntityEffectBundle(entityEffectManager.ReadySpell.Settings, GameManager.Instance.PlayerEntityBehaviour);
+
+        if (powerAttacks && spellcastPower && spell.Settings.TargetType != TargetTypes.CasterOnly)
+        {
+            for (int i = 0; i < spell.Settings.Effects.Length; i++)
+            {
+                EffectSettings settings = spell.Settings.Effects[i].Settings;
+                settings.MagnitudeBaseMax = Mathf.CeilToInt(settings.MagnitudeBaseMax * lastPower);
+                settings.MagnitudeBaseMin = Mathf.CeilToInt(settings.MagnitudeBaseMin * lastPower);
+                settings.MagnitudePlusMax = Mathf.CeilToInt(settings.MagnitudePlusMax * lastPower);
+                settings.MagnitudePlusMin = Mathf.CeilToInt(settings.MagnitudePlusMin * lastPower);
+            }
+        }
+
+        if (OnSpellRelease != null)
+            OnSpellRelease(spell);
+
+        // Always tally magic skills when player physically casts a spell
+        // Cancelled spells do not reach this point
+        EntityEffectManager_TallyPlayerReadySpellEffectSkills.Invoke(entityEffectManager, null);
+
+        // Play cast sound from caster audio source
+        if (spell.CasterEntityBehaviour)
+        {
+            entityEffectManager.PlayCastSound(spell.CasterEntityBehaviour, entityEffectManager.GetCastSoundID(spell.Settings.ElementType));
+        }
+        // Assign bundle directly to self if target is caster
+        // Otherwise instatiate missile prefab based on element type
+        if (spell.Settings.TargetType == TargetTypes.CasterOnly)
+        {
+            entityEffectManager.AssignBundle(spell);
+        }
+        else
+        {
+            //DO MISSILE STUFF HERE
+            DaggerfallMissile missile = entityEffectManager.InstantiateSpellMissile(spell.Settings.ElementType);
+            if (missile)
+            {
+                missile.Payload = spell;
+
+                if (spellcast > 0)
+                {
+                    missile.enabled = false;
+
+                    WeaponFeaturesMissile missileCustom = missile.gameObject.AddComponent<WeaponFeaturesMissile>();
+                    missileCustom.dfMissile = missile;
+
+                    missileCustom.Payload = missile.Payload;
+                    missileCustom.ImpactSound = missile.ImpactSound;
+
+                    missileCustom.MovementSpeed = 25 * spellcastMissileSpeed;
+                    missileCustom.ExplosionRadius = spellcastExplosionRadius;
+                    missileCustom.gravityMod = 0;
+
+                    if (GameManager.Instance.PlayerMouseLook.cursorActive)
+                    {
+                        //missile starts directly from the camera
+                        missileCustom.CustomAimPosition = GetEyePos;
+
+                        /*Vector2 mousePosition = new Vector2(InputManager.Instance.MousePosition.x, InputManager.Instance.MousePosition.y);
+                        Vector3 forward = GameManager.Instance.MainCamera.ScreenPointToRay(mousePosition).direction;*/
+                        Vector2 mousePosition = new Vector2((InputManager.Instance.MousePosition.x - screenRect.x)/screenRect.width, (InputManager.Instance.MousePosition.y - screenRect.y)/screenRect.height);
+                        if (DaggerfallUnity.Settings.LargeHUD)
+                            mousePosition.y = (InputManager.Instance.MousePosition.y - screenRect.y - DaggerfallUI.Instance.DaggerfallHUD.LargeHUD.ScreenHeight) / screenRect.height;
+                        Vector3 forward = GameManager.Instance.MainCamera.ViewportPointToRay(mousePosition).direction;
+                        missileCustom.CustomAimDirection = forward.normalized;
+                    }
+                    else
+                    {
+
+                        if (spell.Settings.TargetType == TargetTypes.ByTouch)
+                        {
+                            missileCustom.CustomAimPosition = GetEyePos;
+                            missileCustom.ColliderRadius = spellcastTouchRadius;
+                        }
+                        else
+                        {
+                            missileCustom.CustomAimPosition = GetEyePos - (playerCamera.transform.up * 0.5f);
+                            missileCustom.ColliderRadius = spellcastMissileRadius;
+                        }
+
+                        missileCustom.CustomAimDirection = playerCamera.transform.forward;
+                    }
+                }
+                else
+                {
+                    missile.CustomAimPosition = GetEyePos;
+                    missile.GetComponent<Rigidbody>().collisionDetectionMode = CollisionDetectionMode.Continuous;
+                }
+                if (OnSpellSpawn != null)
+                    OnSpellSpawn(missile.gameObject, spell);
+            }
+        }
+
+        // Clear ready spell and reset casting - do not update last spell if casting from item
+        object[] readySpellParams = new object[1] { entityEffectManager.ReadySpell };
+        EntityEffectManager_RaiseOnCastReadySpell.Invoke(entityEffectManager, readySpellParams);
+        if ((bool)EntityEffectManager_ReadySpellDoesNotCostSpellPoints.GetValue(entityEffectManager))
+        {
+            EntityEffectManager_LastReadySpellCastingCost.SetValue(entityEffectManager, 0);
+        }
+        else
+        {
+            EntityEffectManager_LastSpell.SetValue(entityEffectManager, entityEffectManager.ReadySpell);
+            EntityEffectManager_LastReadySpellCastingCost.SetValue(entityEffectManager, EntityEffectManager_ReadySpellCastingCost.GetValue(entityEffectManager));
+        }
+        entityEffectManager.ReadySpell = null;
+        EntityEffectManager_ReadySpellCastingCost.SetValue(entityEffectManager, 0);
+        EntityEffectManager_InstantCast.SetValue(entityEffectManager, false);
+        EntityEffectManager_ReadySpellDoesNotCostSpellPoints.SetValue(entityEffectManager, false);
+
+    }
+
+    IEnumerator StreamSpell(float count)
+    {
+        Debug.Log("TOME OF BATTLE - WAR MAGIC - STREAMING SPELL");
+
+        EntityEffectBundle spell = new EntityEffectBundle(entityEffectManager.ReadySpell.Settings, GameManager.Instance.PlayerEntityBehaviour);
+
+        Vector3 pos = GetEyePos - (playerCamera.transform.up * 0.5f);
+        Vector3 dir = playerCamera.transform.forward;
+
+        //modify spell effects here, divide magnitude by count
+        for (int i = 0; i < spell.Settings.Effects.Length; i++)
+        {
+            EffectSettings settings = spell.Settings.Effects[i].Settings;
+            settings.MagnitudeBaseMax = Mathf.CeilToInt(settings.MagnitudeBaseMax / count);
+            settings.MagnitudeBaseMin = Mathf.CeilToInt(settings.MagnitudeBaseMin / count);
+            settings.MagnitudePlusMax = Mathf.CeilToInt(settings.MagnitudePlusMax / count);
+            settings.MagnitudePlusMin = Mathf.CeilToInt(settings.MagnitudePlusMin / count);
+        }
+
+        for (int i = 0; i < count; i++)
+        {
+            DaggerfallMissile missile = entityEffectManager.InstantiateSpellMissile(spell.Settings.ElementType);
+            if (missile)
+            {
+                missile.Payload = spell;
+                missile.enabled = false;
+
+                WeaponFeaturesMissile missileCustom = missile.gameObject.AddComponent<WeaponFeaturesMissile>();
+                missileCustom.dfMissile = missile;
+
+                missileCustom.Payload = missile.Payload;
+                missileCustom.ImpactSound = missile.ImpactSound;
+
+                missileCustom.MovementSpeed = 25;
+                missileCustom.ColliderRadius = 0.4f;
+                missileCustom.gravityMod = 0;
+
+                missileCustom.CustomAimPosition = pos;
+                missileCustom.CustomAimDirection = dir;
+            }
+            yield return new WaitForSeconds(0.05f);
+        }
+        yield return new WaitForSeconds(0.1f);
+    }
+
     public static int AdjustWeaponHitChanceMod(DaggerfallEntity attacker, DaggerfallEntity target, int hitChanceMod, int weaponAnimTime, DaggerfallUnityItem weapon)
     {
-
         //if Power Attacks module is enabled, scale to-hit bonus to Last Power
         if (attacker == GameManager.Instance.PlayerEntity)
         {
@@ -2245,7 +3323,6 @@ public class WeaponFeatures : MonoBehaviour
 
     public static int AdjustWeaponAttackDamage(DaggerfallEntity attacker, DaggerfallEntity target, int damage, int weaponAnimTime, DaggerfallUnityItem weapon)
     {
-
         if (attacker == GameManager.Instance.PlayerEntity)
         {
             if (Instance.powerMessage)
@@ -2285,7 +3362,7 @@ public class WeaponFeatures : MonoBehaviour
         {
             //If attacker is player
             //Lerp between Min and Max damage using Last Power
-            damage = Mathf.FloorToInt(Mathf.Lerp(weapon.GetBaseDamageMin(), weapon.GetBaseDamageMax(), Instance.LastPower));
+            damage = Mathf.FloorToInt(Mathf.LerpUnclamped(weapon.GetBaseDamageMin(), weapon.GetBaseDamageMax(), Instance.LastPower));
             if (Instance.powerMessage)
                 DaggerfallUI.Instance.DaggerfallHUD.SetMidScreenText("Your base damage was " + damage.ToString() + " at " + (Instance.LastPower * 100).ToString("0") + "% Power!");
             damage += damageModifier;
@@ -2460,7 +3537,7 @@ public class WeaponFeatures : MonoBehaviour
             {
                 //If attacker is player
                 //Lerp between Min and Max damage using Last Power
-                damage = Mathf.FloorToInt(Mathf.Lerp(minDmg, maxDmg, Instance.LastPower));
+                damage = Mathf.FloorToInt(Mathf.LerpUnclamped(minDmg, maxDmg, Instance.LastPower));
                 if (Instance.powerMessage)
                     DaggerfallUI.Instance.DaggerfallHUD.SetMidScreenText("Your base damage was " + damage.ToString() + " at " + (Instance.LastPower * 100).ToString("0") + "% Power!");
             }
@@ -2516,7 +3593,7 @@ public class WeaponFeatures : MonoBehaviour
         return damage;
     }
 
-    public static int CalculateHandToHandAttackDamage(DaggerfallEntity attacker, DaggerfallEntity target, int damageModifier, bool player)
+    public static int CalculateHandToHandAttackDamage(DaggerfallEntity attacker, DaggerfallEntity target, int damageModifier)
     {
         int minBaseDamage = FormulaHelper.CalculateHandToHandMinDamage(attacker.Skills.GetLiveSkillValue(DFCareer.Skills.HandToHand));
         int maxBaseDamage = FormulaHelper.CalculateHandToHandMaxDamage(attacker.Skills.GetLiveSkillValue(DFCareer.Skills.HandToHand));
@@ -2526,7 +3603,7 @@ public class WeaponFeatures : MonoBehaviour
         {
             //If attacker is player
             //Lerp between Min and Max damage using Last Power
-            damage = Mathf.FloorToInt(Mathf.Lerp(minBaseDamage, maxBaseDamage, Instance.LastPower));
+            damage = Mathf.FloorToInt(Mathf.LerpUnclamped(minBaseDamage, maxBaseDamage, Instance.LastPower));
             DaggerfallUI.Instance.DaggerfallHUD.SetMidScreenText("You dealt " + damage.ToString() + " damage at " + (Instance.LastPower * 100).ToString("0") + "% Power!");
         }
 
@@ -2534,14 +3611,14 @@ public class WeaponFeatures : MonoBehaviour
         damage += damageModifier;
 
         // Apply strength modifier for players. It is not applied in classic despite what the in-game description for the Strength attribute says.
-        if (player)
+        if (attacker == GameManager.Instance.PlayerEntity)
             damage += FormulaHelper.DamageModifier(attacker.Stats.LiveStrength);
 
         damage += FormulaHelper.GetBonusOrPenaltyByEnemyType(attacker, target);
 
         return damage;
     }
-    public static int CalculateHandToHandAttackDamage_SphincterVision(DaggerfallEntity attacker, DaggerfallEntity target, int damageModifier, bool player)
+    public static int CalculateHandToHandAttackDamage_SphincterVision(DaggerfallEntity attacker, DaggerfallEntity target, int damageModifier)
     {
         // if hand to hand is forbidden, you aren't hitting jack
         if (((int)attacker.Career.ForbiddenProficiencies & (int)DFCareer.ProficiencyFlags.HandToHand) != 0)
@@ -2550,7 +3627,7 @@ public class WeaponFeatures : MonoBehaviour
         int minBaseDamage = FormulaHelper.CalculateHandToHandMinDamage(attacker.Skills.GetLiveSkillValue(DFCareer.Skills.HandToHand));
         int maxBaseDamage = FormulaHelper.CalculateHandToHandMaxDamage(attacker.Skills.GetLiveSkillValue(DFCareer.Skills.HandToHand));
         // Apply strength modifier for players. It is not applied in classic despite what the in-game description for the Strength attribute says.
-        if (player || ((attacker as EnemyEntity).EntityType == EntityTypes.EnemyClass))
+        if (attacker == GameManager.Instance.PlayerEntity || ((attacker as EnemyEntity).EntityType == EntityTypes.EnemyClass))
         {
             maxBaseDamage += (FormulaHelper.DamageModifier(attacker.Stats.LiveStrength) / 2);
         }
@@ -2570,7 +3647,7 @@ public class WeaponFeatures : MonoBehaviour
         {
             //If attacker is player
             //Lerp between Min and Max damage using Last Power
-            damage = Mathf.FloorToInt(Mathf.Lerp(minBaseDamage, maxBaseDamage, Instance.LastPower));
+            damage = Mathf.FloorToInt(Mathf.LerpUnclamped(minBaseDamage, maxBaseDamage, Instance.LastPower));
             DaggerfallUI.Instance.DaggerfallHUD.SetMidScreenText("You dealt " + damage.ToString() + " damage at " + (Instance.LastPower * 100).ToString("0") + "% Power!");
         }
 
