@@ -1,6 +1,6 @@
 {
     "ModTitle": "Come Sail Away",
-    "ModVersion": "2.0.1",
+    "ModVersion": "2.1",
     "ModAuthor": "RedRoryOTheGlen",
     "ContactInfo": "rmufrancisco@gmail.com",
     "DFUnity_Version": "1.1.1",
@@ -337,6 +337,11 @@
         "Assets/Game/Mods/ComeSailAway/Models/Animations/Clips/CarrackAnimations/Medium Lateen 2 Unstowed GoodTack.anim",
         "Assets/Game/Mods/ComeSailAway/Prefabs/112405.prefab",
         "Assets/Game/Mods/ComeSailAway/Prefabs/112404.prefab",
-        "Assets/Game/Mods/ComeSailAway/Shaders/DaggerfallBillboardMasked.shader"
+        "Assets/Game/Mods/ComeSailAway/Shaders/DaggerfallBillboardMasked.shader",
+        "Assets/Game/Mods/ComeSailAway/ComeSailAway.dfmod.json",
+        "Assets/Game/Mods/ComeSailAway/Prefabs/112406.prefab",
+        "Assets/Game/Mods/ComeSailAway/Textures/112395_3-0.png",
+        "Assets/Game/Mods/ComeSailAway/Models/Animations/Clips/GalleonAnimations/Lateen 2 Unstowed CenterTack.anim",
+        "Assets/Game/Mods/ComeSailAway/Models/Animations/Clips/GalleonAnimations/Lateen Unstowed CenterTack.anim"
     ]
 }

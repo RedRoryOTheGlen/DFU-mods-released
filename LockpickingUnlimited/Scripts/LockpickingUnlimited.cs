@@ -6,6 +6,7 @@ using UnityEngine;
 using DaggerfallWorkshop;
 using DaggerfallWorkshop.Utility;
 using DaggerfallWorkshop.Game;
+using DaggerfallWorkshop.Game.Formulas;
 using DaggerfallWorkshop.Game.MagicAndEffects;
 using DaggerfallWorkshop.Game.Questing;
 using DaggerfallWorkshop.Game.Banking;
@@ -80,6 +81,7 @@ namespace LockpickingUnlimitedMod
         public bool disarm = true;
         public bool disarmRequireTools = true;
         public bool disarmAlwaysTrigger = true;
+        public bool disarmVanillaFormula = false;
         public int disarmChance = 0;
 
         //detection
@@ -173,6 +175,7 @@ namespace LockpickingUnlimitedMod
                 disarmChance = settings.GetValue<int>("Disarm", "BaseChance");
                 disarmRequireTools = settings.GetValue<bool>("Disarm", "RequireTools");
                 disarmAlwaysTrigger = settings.GetValue<bool>("Disarm", "AlwaysTriggerOnFail");
+                disarmVanillaFormula = settings.GetValue<bool>("Disarm", "UseVanillaFormula");
             }
             if (change.HasChanged("Detection"))
             {
@@ -242,7 +245,7 @@ namespace LockpickingUnlimitedMod
                         hitframe = false;
                     else if (fpsWeapon.GetCurrentFrame() == fpsWeapon.GetHitFrame() && !hitframe)
                     {
-                        //Debug.Log("LOCKPICKING UNLIMITED - PLAYER ATTACKED");
+                        Debug.Log("LOCKPICKING UNLIMITED - PLAYER ATTACKED");
                         hitframe = true;
 
                         // Fire ray along player facing using weapon range
@@ -256,7 +259,7 @@ namespace LockpickingUnlimitedMod
                                 DaggerfallActionDoor actionDoor = hit.collider.gameObject.GetComponent<DaggerfallActionDoor>();
                                 if (actionDoor)
                                 {
-                                    //Debug.Log("LOCKPICKING UNLIMITED - PLAYER BASHED");
+                                    Debug.Log("LOCKPICKING UNLIMITED - PLAYER BASHED ACTION DOOR");
 
                                     //custom bash on non-magically locked doors
                                     if ((!bashLockedOnly || actionDoor.CurrentLockValue > 0) && actionDoor.CurrentLockValue < 20)
@@ -478,6 +481,7 @@ namespace LockpickingUnlimitedMod
                                         DaggerfallStaticDoors doors = GameManager.Instance.PlayerActivate.GetDoors(hit.transform, out doorOwner);
                                         if (doors)
                                         {
+                                            Debug.Log("LOCKPICKING UNLIMITED - PLAYER BASHED LOCKED STATIC DOOR");
                                             PlayerEntity player = GameManager.Instance.PlayerEntity;
                                             PlayerEnterExit playerGPS = GameManager.Instance.PlayerEnterExit;
                                             int lockLevel = GameManager.Instance.PlayerActivate.GetBuildingLockValue(buildingSummary);
@@ -608,6 +612,29 @@ namespace LockpickingUnlimitedMod
                                                     ActivateStaticDoor.Invoke(GameManager.Instance.PlayerActivate, args);
                                                 }
                                             }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        Transform doorOwner;
+                                        DaggerfallStaticDoors doors = GameManager.Instance.PlayerActivate.GetDoors(hit.transform, out doorOwner);
+                                        if (doors)
+                                        {
+                                            Debug.Log("LOCKPICKING UNLIMITED - PLAYER BASHED UNLOCKED STATIC DOOR");
+                                            int lockLevel = GameManager.Instance.PlayerActivate.GetBuildingLockValue(buildingSummary);
+                                            object[] args = new object[9]
+                                                {
+                                                        doors,
+                                                        hit,
+                                                        true,
+                                                        building,
+                                                        buildingSummary.BuildingType,
+                                                        lockLevel > 0,
+                                                        lockLevel,
+                                                        doorOwner,
+                                                        true
+                                                };
+                                            ActivateStaticDoor.Invoke(GameManager.Instance.PlayerActivate, args);
                                         }
                                     }
                                 }
@@ -1047,6 +1074,14 @@ namespace LockpickingUnlimitedMod
         {
             PlayerEntity player = GameManager.Instance.PlayerEntity;
             int chance = baseChance;
+
+            if (disarmVanillaFormula)
+            {
+                //use random range 1-10 for trap difficulty
+                chance += FormulaHelper.CalculateInteriorLockpickingChance(player.Level,UnityEngine.Random.Range(1,6),player.Skills.GetLiveSkillValue(DaggerfallConnect.DFCareer.Skills.Lockpicking));
+                return chance;
+            }
+
             chance += player.Skills.GetLiveSkillValue(DaggerfallConnect.DFCareer.Skills.Lockpicking) / 2;    //50% base chance to disarm at 100 Lockpicking
             chance += Mathf.RoundToInt(((float)player.Stats.GetLiveStatValue(DaggerfallConnect.DFCareer.Stats.Intelligence) - 50f) / 2.5f);  //-20% to +20% chance from INT
             chance += Mathf.RoundToInt(((float)player.Stats.GetLiveStatValue(DaggerfallConnect.DFCareer.Stats.Agility) - 50f) / 2.5f);       //-20% to +20% chance from AGI
@@ -1092,7 +1127,7 @@ namespace LockpickingUnlimitedMod
             }
         }
 
-        IEnumerator LockDoorsCoroutine(int maxLockLevel = 11, bool hideNPCs = false)
+        IEnumerator LockDoorsCoroutine(int maxLockLevel = 6, bool hideNPCs = false)
         {
             Debug.Log("LOCKPICKING UNLIMITED - LOCKING DOORS!");
 
@@ -1444,14 +1479,28 @@ namespace LockpickingUnlimitedMod
             if (enterExit.BuildingType == DaggerfallConnect.DFLocation.BuildingTypes.Ship || DaggerfallBankManager.IsHouseOwned(buildingKey))
                 return;
 
-            //check if interior is closed shop/guild hall or residence at night
+            BuildingDirectory buildingDirectory = GameManager.Instance.StreamingWorld.GetCurrentBuildingDirectory();
+            if (!buildingDirectory)
+                return;
+            BuildingSummary buildingSummary;
+            if (!buildingDirectory.GetBuildingSummary(args.StaticDoor.buildingKey, out buildingSummary))
+                return;
+
+            //check if interior should be closed up
+            if (!GameManager.Instance.PlayerActivate.BuildingIsUnlocked(buildingSummary))
+            {
+                locking = LockDoorsCoroutine(enterExit.BuildingDiscoveryData.quality, lockNPCsHide);
+                StartCoroutine(locking);
+            }
+
+            /*//check if interior is closed shop/guild hall or residence at night
             if (((RMBLayout.IsShop(enterExit.BuildingType) || enterExit.BuildingType == DaggerfallConnect.DFLocation.BuildingTypes.GuildHall) && !PlayerActivate.IsBuildingOpen(enterExit.BuildingType)) ||
                 (RMBLayout.IsResidence(enterExit.BuildingType) && DaggerfallUnity.Instance.WorldTime.Now.IsNight)
                 )
             {
                 locking = LockDoorsCoroutine(enterExit.BuildingDiscoveryData.quality, lockNPCsHide);
                 StartCoroutine(locking);
-            }
+            }*/
         }
 
         void FillMasterLists()

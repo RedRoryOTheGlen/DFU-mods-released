@@ -35,7 +35,7 @@ namespace ComeSailAwayMod
         {
             Debug.Log("COME SAIL AWAY - USING BOAT PARTS!");
 
-            if (GameManager.Instance.PlayerEnterExit.IsPlayerInside)
+            if (GameManager.Instance.PlayerEnterExit.IsPlayerInside && GameManager.Instance.PlayerEnterExit.blockWaterLevel == 10000)
                 return false;
 
             //close inventory

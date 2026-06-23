@@ -66,6 +66,7 @@ namespace ComeSailAwayMod
         public GameObject CargoTrigger;
 
         public GameObject StatusTrigger;
+        public GameObject PositionTrigger;
         public GameObject VariantTrigger;
         public GameObject VariantObject;
         public int GetVariantCount
@@ -109,6 +110,7 @@ namespace ComeSailAwayMod
         public DFPosition MapPixel;
         public Vector3 Position;
         public Vector3 Direction;
+        public bool inside;
 
         public DaggerfallLoot Cargo;
 
@@ -202,9 +204,9 @@ namespace ComeSailAwayMod
             get
             {
                 if (WODTerrain != null)
-                    return 101;
+                    return 100;
 
-                return 35;
+                return 34;
             }
         }
 
@@ -273,6 +275,7 @@ namespace ComeSailAwayMod
 
         public Vector3 MoveVectorTarget = Vector3.zero;
         public Vector3 MoveVectorCurrent = Vector3.zero;
+        public Vector3 CollisionVector = Vector3.zero;
         public float TurnTarget = 0;
         public float TurnCurrent = 0;
 
@@ -388,6 +391,7 @@ namespace ComeSailAwayMod
         float turnAccelOarMod = 1f;
         float turnSpeedSailMod = 1f;
         float turnAccelSailMod = 1f;
+        bool PersistentDungeonBoats = false;
         bool debugShow = false;
 
         //Mod Messages
@@ -397,7 +401,6 @@ namespace ComeSailAwayMod
 
         //mod compatibility
         Mod WODTerrain;
-
         Mod AnimatedWater;
         bool AWVertexWaves = false;
         bool DisableParticles
@@ -410,6 +413,12 @@ namespace ComeSailAwayMod
                 return false;
             }
         }
+        Mod IliacPuddleNoMore;
+
+        //Travel Options
+        Mod TravelOptions;
+        public bool isTravelling;
+        public bool wasTravelling;
 
         public bool IsSailing
         {
@@ -504,6 +513,69 @@ namespace ComeSailAwayMod
             return boat;
         }
 
+        //ocean map
+        Texture2D mapTexture;
+        Texture2D lineTexture;
+        int mapLineThickness = 1;
+        int mapLineThicknessFinal
+        {
+            get
+            {
+                if (InputManager.Instance.GetKey(KeyCode.LeftShift))
+                    return 0;
+
+                return mapLineThickness;
+            }
+        }
+        int mapMarkerThickness = 2;
+        int mapMarkerThicknessFinal
+        {
+            get
+            {
+                if (InputManager.Instance.GetKey(KeyCode.LeftShift))
+                    return 0;
+
+                return mapMarkerThickness;
+            }
+        }
+        int mapMarkerOutlineThickness = 2;
+        int mapMarkerOutlineThicknessFinal
+        {
+            get
+            {
+                if (InputManager.Instance.GetKey(KeyCode.LeftShift))
+                    return 0;
+
+                return mapMarkerOutlineThickness;
+            }
+        }
+        int mapMarkerClickRange = 5;
+        float mapBackdropOpacity = 1;
+        bool mapShowing;
+        bool mapShowingPosition;
+        bool mapRestrictTime;
+        bool mapRestrictWeather;
+        IEnumerator showingBoatPosition;
+        public List<MapMarker> mapMarkers = new List<MapMarker>();
+
+        int mapMarkerMode = 0;
+        string[] mapMarkerModeLabels = new string[] { "Yellow", "Green", "Cyan", "Blue", "Magenta", "Red", "White", "Gray", };
+        Color[] mapMarkerModeColors = new Color[] { Color.yellow, Color.green, Color.cyan, Color.blue, Color.magenta, Color.red, Color.white, Color.gray };
+
+        public struct MapMarker
+        {
+            public Vector2Int position;
+            public string label;
+            public Color color;
+
+            public MapMarker (Vector2Int newPosition, string newLabel, Color newColor)
+            {
+                position = newPosition;
+                label = newLabel;
+                color = newColor;
+            }
+        }
+
         //reference to StreamingWorld's terrain array
         FieldInfo terrainArray;
 
@@ -573,11 +645,21 @@ namespace ComeSailAwayMod
             {
                 trimAuto = settings.GetBool("SailingAssist", "AutoTrimming");
                 trimAutoSquareUpwind = settings.GetBool("SailingAssist", "AutoStowSquareSails");
-                //trimAutoGaffLargeSquare = settings.GetBool("SailingAssist", "AutoStowGaffSails");
+            }
+            if (change.HasChanged("Map"))
+            {
+                mapRestrictTime = settings.GetBool("Map", "RestrictPositionReadingTime");
+                mapRestrictWeather = settings.GetBool("Map", "RestrictPositionReadingWeather");
+                mapMarkerClickRange = settings.GetInt("Map", "ClickRangeThreshold");
+                mapLineThickness = settings.GetInt("Map", "PositionLineThickness");
+                mapMarkerThickness = settings.GetInt("Map", "MarkerThickness");
+                mapMarkerOutlineThickness = settings.GetInt("Map", "MarkerOutlineThickness");
+                mapBackdropOpacity = settings.GetInt("Map", "BackdropOpacity")*0.01f;
             }
             if (change.HasChanged("Compatibility"))
             {
                 AWVertexWaves = settings.GetBool("Compatibility", "AnimatedWaterVertexWaves");
+                PersistentDungeonBoats = settings.GetBool("Compatibility", "PersistentDungeonBoats");
             }
             if (change.HasChanged("Debug"))
             {
@@ -613,6 +695,8 @@ namespace ComeSailAwayMod
 
             WODTerrain = ModManager.Instance.GetModFromGUID("a9091dd7-e07a-4171-b16d-d13d67a5f221");
             AnimatedWater = ModManager.Instance.GetMod("Animated Water");
+            IliacPuddleNoMore = ModManager.Instance.GetModFromGUID("f1e8a1b3-8a4f-4f4e-bb6e-3d3a8a1b3f1e");
+            TravelOptions = ModManager.Instance.GetModFromGUID("93f3ad1c-83cc-40ac-b762-96d2f47f2e05");
 
             playerObject = GameManager.Instance.PlayerObject;
 
@@ -630,6 +714,7 @@ namespace ComeSailAwayMod
             PlayerActivate.RegisterCustomActivation(mod, 112403, TriggerDoor);
             PlayerActivate.RegisterCustomActivation(mod, 112404, PickVariant);
             PlayerActivate.RegisterCustomActivation(mod, 112405, CheckBoatStatus);
+            PlayerActivate.RegisterCustomActivation(mod, 112406, CheckBoatPosition);
 
             //audio clips
             audioClips = new AudioClip[5]
@@ -642,10 +727,7 @@ namespace ComeSailAwayMod
             };
 
             waveObject = new GameObject("WaveObject");
-            if (WODTerrain != null)
-                waveObject.transform.localPosition = (Vector3.forward * (terrainEdge / 2)) + (Vector3.right * (terrainEdge / 2)) + (Vector3.up * 100);
-            else
-                waveObject.transform.localPosition = (Vector3.forward * (terrainEdge / 2)) + (Vector3.right * (terrainEdge / 2)) + (Vector3.up * 34);
+            waveObject.transform.localPosition = (Vector3.forward * (terrainEdge / 2)) + (Vector3.right * (terrainEdge / 2)) + (Vector3.up * (WaterLevel+0.1f));
             waveObject.transform.localScale = Vector3.one * terrainEdge;
             waveMeshRenderer = waveObject.AddComponent<MeshRenderer>();
             waveMeshFilter = waveObject.AddComponent<MeshFilter>();
@@ -672,9 +754,9 @@ namespace ComeSailAwayMod
             PlayerEnterExit.OnTransitionDungeonExterior += OnTransition;
             DaggerfallTravelPopUp.OnPostFastTravel += OnPostFastTravel;
             DaggerfallTravelPopUp.OnPreFastTravel += OnPreFastTravel;
+            StreamingWorld.OnTeleportToCoordinates += OnTeleportToCoordinates;
             EntityEffectBroker.OnNewMagicRound += OnNewMagicRound;
             SaveLoadManager.OnLoad += OnLoad;
-
             SaveLoadManager.OnStartLoad += OnStartLoad;
 
             GameManager.Instance.PlayerEntity.OnDeath += OnPlayerDeath;
@@ -693,11 +775,14 @@ namespace ComeSailAwayMod
             for (int i = 0; i < windDirectionWidgetFrameCount; i++)
             {
                 Texture2D texture;
-                DaggerfallWorkshop.Utility.AssetInjection.TextureReplacement.TryImportTexture(archive, record, frame, out texture);
+                TextureReplacement.TryImportTexture(archive, record, frame, out texture);
                 windDirectionWidgetTextures[i] = texture;
                 frame++;
             }
             windDirectionWidgetTextureCurrent = windDirectionWidgetTextures[0];
+
+            TextureReplacement.TryImportTexture(archive, 3, 0, out mapTexture);
+            lineTexture = DaggerfallUnity.Instance.MaterialReader.TextureReader.GetTexture2D(0, 112, 0);
 
             DaggerfallUnity.Instance.ItemHelper.RegisterCustomItem(ItemBoatParts.templateIndex, ItemGroups.UselessItems2, typeof(ItemBoatParts));
             DaggerfallUnity.Instance.ItemHelper.RegisterCustomItem(ItemBoatDeed.templateIndex, ItemGroups.UselessItems2, typeof(ItemBoatDeed));
@@ -705,6 +790,9 @@ namespace ComeSailAwayMod
             //register console commands
             ConsoleCommandsDatabase.RegisterCommand(GiveMeBoat.name, GiveMeBoat.description, GiveMeBoat.usage, GiveMeBoat.Execute);
             ConsoleCommandsDatabase.RegisterCommand(PlaceBoatAtMe.name, PlaceBoatAtMe.description, PlaceBoatAtMe.usage, PlaceBoatAtMe.Execute);
+            ConsoleCommandsDatabase.RegisterCommand(PrintBoats.name, PrintBoats.description, PrintBoats.usage, PrintBoats.Execute);
+            ConsoleCommandsDatabase.RegisterCommand(IdentifyBoat.name, IdentifyBoat.description, IdentifyBoat.usage, IdentifyBoat.Execute);
+            ConsoleCommandsDatabase.RegisterCommand(PurgeBoat.name, PurgeBoat.description, PurgeBoat.usage, PurgeBoat.Execute);
 
             mod.LoadSettingsCallback = LoadSettings;
             mod.LoadSettings();
@@ -867,6 +955,7 @@ namespace ComeSailAwayMod
             boatCargoObject.transform.SetParent(newBoat.GameObject.transform);
             boatCargoObject.transform.localPosition = Vector3.zero;
             newBoat.Cargo = boatCargoObject.AddComponent<DaggerfallLoot>();
+            newBoat.Cargo.ContainerImage = InventoryContainerImages.Merchant;
             newBoat.Cargo.playerOwned = true;
         }
 
@@ -1244,6 +1333,14 @@ namespace ComeSailAwayMod
                     boat.StatusTrigger.transform.localScale = Vector3.one;
                 }
 
+                if (boat.PositionTrigger == null && child.name == "PositionTrigger")
+                {
+                    //setup status trigger
+                    boat.PositionTrigger = MeshReplacement.ImportCustomGameobject(112406, child, GameManager.Instance.PlayerObject.transform.localToWorldMatrix);
+                    boat.PositionTrigger.transform.localPosition = Vector3.zero;
+                    boat.PositionTrigger.transform.localScale = Vector3.one;
+                }
+
                 if (boat.DrivePosition == null && child.name == "DrivePosition")
                 {
                     boat.DrivePosition = child.gameObject;
@@ -1369,7 +1466,7 @@ namespace ComeSailAwayMod
                     break;
 
                 case "StopSailing":
-                    StopSailing();
+                    StopSailingDelayed();
                     break;
 
                 case "IsPlayerSailing":
@@ -1393,13 +1490,13 @@ namespace ComeSailAwayMod
         private static class GiveMeBoat
         {
             public static readonly string name = "giveboat";
-            public static readonly string description = "Add a boat to the player's inventory";
+            public static readonly string description = "Add a boat deed to the player's inventory";
             public static readonly string usage = "giveboat [hull] [variant]; No argument will result in random hull and variant.";
 
             public static string Execute(params string[] args)
             {
                 string result = "";
-                result = "Boat added to player's inventory";
+                result = "Boat deed added to player's inventory";
                 //add variant stuff here
                 int hull = 0;
                 int variant = 0;
@@ -1447,6 +1544,100 @@ namespace ComeSailAwayMod
                 return result;
             }
         }
+        private static class PrintBoats
+        {
+            public static readonly string name = "printboats";
+            public static readonly string description = "lists all placed boats";
+            public static readonly string usage = "";
+
+            public static string Execute(params string[] args)
+            {
+                if (Instance.AllBoats.Count < 1)
+                    return "No placed boats!";
+
+                string result = "";
+
+                for (int i = 0; i < Instance.AllBoats.Count; i++)
+                {
+                    Boat boat = Instance.AllBoats[i];
+                    result += i.ToString() + " - " + Instance.hullNames[boat.hull] + " at " + boat.MapPixel.ToString() + "\n";
+                }
+
+                return result;
+            }
+        }
+
+        private static class IdentifyBoat
+        {
+            public static readonly string name = "identifyboat";
+            public static readonly string description = "Get the index of the boat under the crosshair";
+            public static readonly string usage = "use command while looking at a boat";
+
+            public static string Execute(params string[] args)
+            {
+                string result = "";
+
+                //raycast to boat, check AllBoats, return index of hitboat
+                Ray ray = new Ray(GameManager.Instance.MainCameraObject.transform.position, GameManager.Instance.MainCameraObject.transform.forward);
+                RaycastHit hit = new RaycastHit();
+                LayerMask layerMask = ~(1 << LayerMask.NameToLayer("Player"));
+                layerMask = layerMask & ~(1 << LayerMask.NameToLayer("Ignore Raycast"));
+                if (Physics.Raycast(ray, out hit, 100f, layerMask))
+                {
+                    int index = -1;
+                    index = GetHitBoatIndex(hit);
+                    if (index == -1)
+                        result = "Hit object is not a boat!";
+                    else
+                        result = "Hit object is a boat with index " + index.ToString();
+                }
+                else
+                    result = "Nothing was hit!";
+
+                return result;
+            }
+        }
+        private static class PurgeBoat
+        {
+            public static readonly string name = "purgeboat";
+            public static readonly string description = "Destroys the boat at the provided index";
+            public static readonly string usage = "purgeboat [index]";
+
+            public static string Execute(params string[] args)
+            {
+                if (args.Length < 1)
+                    return "Error - No arguments provided, check the usage notes.";
+
+                if (args.Length > 1)
+                    return "Error - Too many arguments, check the usage notes.";
+
+                int index = Convert.ToInt32(args[0]);
+
+                if (index >= Instance.AllBoats.Count)
+                    return "Error - Index is out of range";
+
+                Boat boat = Instance.AllBoats[index];
+                Instance.AllBoats.RemoveAt(index);
+                Destroy(boat.GameObject);
+                return "Boat at index " + index.ToString() + " was purged.";
+            }
+        }
+
+        public static int GetHitBoatIndex(RaycastHit hit)
+        {
+            int index = -1;
+
+            for (int i = 0; i < Instance.AllBoats.Count; i++)
+            {
+                if (hit.transform.root.gameObject.GetInstanceID() == Instance.AllBoats[i].GameObject.GetInstanceID())
+                {
+                    index = i;
+                    break;
+                }
+            }
+
+            return index;
+        }
 
         void UpdateAudioSource()
         {
@@ -1480,7 +1671,7 @@ namespace ComeSailAwayMod
             }
             else
             {
-                Instance.ResetTimeScale();
+                Instance.ResetTimeScale(false);
             }
         }
 
@@ -1506,20 +1697,24 @@ namespace ComeSailAwayMod
             }
             else
             {
-                Instance.ResetTimeScale();
+                Instance.ResetTimeScale(false);
             }
         }
 
         void OnPostFastTravel()
         {
-            Instance.ResetTimeScale();
+            Instance.ResetTimeScale(false);
         }
 
         void OnTransition(PlayerEnterExit.TransitionEventArgs args)
         {
-            Instance.ResetTimeScale();
+            Instance.ResetTimeScale(false);
 
             UpdateBoatVisibility();
+
+            UpdateWind(GameManager.Instance.WeatherManager.PlayerWeather.WeatherType);
+
+            UpdateWaveMesh();
         }
 
         void OnPositionUpdate(Vector3 offset)
@@ -1529,60 +1724,74 @@ namespace ComeSailAwayMod
             if (AllBoats.Count < 1)
                 return;
 
-            UpdateBoatVisibility();
-
             foreach (Boat boat in AllBoats)
             {
-                if (!boat.GameObject.activeSelf)
-                    continue;
-
-                boat.WakeEmitter.Stop();
-
-                //when floating origin resets, update boat position
-                Vector3 pos = boat.GameObject.transform.position + offset;
-                //boat.GameObject.transform.position = new Vector3(pos.x,WaterLevel,pos.z);
-                boat.GameObject.transform.position = pos;
-
-                //fix wake
-                if (boat.WakeEmitter.particleCount > 0)
+                if (boat.GameObject.activeSelf)
                 {
-                    ParticleSystem.Particle[] particles = new ParticleSystem.Particle[boat.WakeEmitter.particleCount];
-                    boat.WakeEmitter.GetParticles(particles);
-
-                    for (int i = 0; i < boat.WakeEmitter.particleCount; i++)
-                        particles[i].position += offset;
-
-                    boat.WakeEmitter.SetParticles(particles);
+                    OnPositionUpdateBoat(boat, offset);
+                    UpdateBoatVisibility(boat);
                 }
-
-                if (boat.OarParticles.Count > 0)
+                else
                 {
-                    foreach (ParticleSystem particleSystem in boat.OarParticles)
-                    {
-                        ParticleSystem.SubEmittersModule subEmitters = particleSystem.subEmitters;
-                        ParticleSystem subEmitter = subEmitters.GetSubEmitterSystem(0);
-                        if (subEmitter.particleCount > 0)
-                        {
-                            ParticleSystem.Particle[] particles = new ParticleSystem.Particle[subEmitter.particleCount];
-                            subEmitter.GetParticles(particles);
-
-                            for (int i = 0; i < subEmitter.particleCount; i++)
-                                particles[i].position += offset;
-
-                            subEmitter.SetParticles(particles);
-                        }
-                    }
-                }
-
-                if (boat == CurrentBoat)
-                {
-                    playerObject.transform.position = boat.DrivePosition.transform.position;
-                    boat.MapPixel = GameManager.Instance.PlayerGPS.CurrentMapPixel;
-
-                    if (MoveVectorCurrent.magnitude >= wakeThreshold && !DisableParticles)
-                        boat.WakeEmitter.Play();
+                    UpdateBoatVisibility(boat);
+                    if (boat.GameObject.activeSelf)
+                        OnPositionUpdateBoat(boat, offset);
                 }
             }
+        }
+
+        void OnPositionUpdateBoat(Boat boat, Vector3 offset)
+        {
+            boat.WakeEmitter.Stop();
+
+            //when floating origin resets, update boat position
+            Vector3 pos = boat.GameObject.transform.position + offset;
+            boat.GameObject.transform.position = pos;
+
+            //fix wake
+            if (boat.WakeEmitter.particleCount > 0)
+            {
+                ParticleSystem.Particle[] particles = new ParticleSystem.Particle[boat.WakeEmitter.particleCount];
+                boat.WakeEmitter.GetParticles(particles);
+
+                for (int i = 0; i < boat.WakeEmitter.particleCount; i++)
+                    particles[i].position += offset;
+
+                boat.WakeEmitter.SetParticles(particles);
+            }
+
+            if (boat.OarParticles.Count > 0)
+            {
+                foreach (ParticleSystem particleSystem in boat.OarParticles)
+                {
+                    ParticleSystem.SubEmittersModule subEmitters = particleSystem.subEmitters;
+                    ParticleSystem subEmitter = subEmitters.GetSubEmitterSystem(0);
+                    if (subEmitter.particleCount > 0)
+                    {
+                        ParticleSystem.Particle[] particles = new ParticleSystem.Particle[subEmitter.particleCount];
+                        subEmitter.GetParticles(particles);
+
+                        for (int i = 0; i < subEmitter.particleCount; i++)
+                            particles[i].position += offset;
+
+                        subEmitter.SetParticles(particles);
+                    }
+                }
+            }
+
+            if (boat == CurrentBoat)
+            {
+                playerObject.transform.position = boat.DrivePosition.transform.position;
+                boat.MapPixel = GameManager.Instance.PlayerGPS.CurrentMapPixel;
+
+                if (MoveVectorCurrent.magnitude >= wakeThreshold && !DisableParticles)
+                    boat.WakeEmitter.Play();
+            }
+        }
+
+        void OnTeleportToCoordinates(DFPosition worldPos)
+        {
+            UpdateWaveMeshDelayed(0.1f);
         }
 
         void OnNewHour()
@@ -1604,7 +1813,7 @@ namespace ComeSailAwayMod
                 StopSailing();
             }
             else
-                ResetTimeScale();
+                ResetTimeScale(false);
         }
 
         int GetTileMapIndexAtPosition(Vector3 position, Transform terrainTransform)
@@ -1646,26 +1855,35 @@ namespace ComeSailAwayMod
             }
         }
 
+        void UpdateWaveMeshDelayed(float delay = 0.1f)
+        {
+            StartCoroutine(UpdateWaveMeshDelayedCoroutine(delay));
+        }
+
+        IEnumerator UpdateWaveMeshDelayedCoroutine(float delay = 0.1f)
+        {
+            yield return new WaitForSeconds(delay);
+
+            UpdateWaveMesh();
+        }
+
         void UpdateWaveMesh()
         {
             //clear mesh
             waveMeshFilter.mesh.Clear();
 
-            if (!wave || (AnimatedWater != null && AWVertexWaves))
+            if (!wave || (AnimatedWater != null && AWVertexWaves) || GameManager.Instance.PlayerEnterExit.IsPlayerInside || GameManager.Instance.TransportManager.IsOnShip())
                 return;
 
             //reset origin
             Vector3 worldCompensation = GameManager.Instance.StreamingWorld.WorldCompensation;
-            if (WODTerrain != null)
-                waveObject.transform.localPosition = (Vector3.forward * (terrainEdge / 2)) + (Vector3.right * (terrainEdge / 2)) + (Vector3.up * 100) + (Vector3.up * worldCompensation.y);
-            else
-                waveObject.transform.localPosition = (Vector3.forward * (terrainEdge / 2)) + (Vector3.right * (terrainEdge / 2)) + (Vector3.up * 34) + (Vector3.up * worldCompensation.y);
+            waveObject.transform.localPosition = (Vector3.forward * (terrainEdge / 2)) + (Vector3.right * (terrainEdge / 2)) + (Vector3.up * (WaterLevel + 0.1f)) + (Vector3.up * worldCompensation.y);
 
             //get map pixel
             DFPosition mapPixel = GameManager.Instance.PlayerGPS.CurrentMapPixel;
 
             int waterMapHeight = 2;
-            int waterWorldHeight = (int)WaterLevel;
+            int waterWorldHeight = (int)WaterLevel+1;
 
             if (WODTerrain != null)
                 waterMapHeight = 6;
@@ -2511,45 +2729,19 @@ namespace ComeSailAwayMod
 
         void CheckCollision(Boat boat)
         {
-            bool z = false;
-            bool x = false;
-
-            Bounds bounds = boat.MeshCollider.sharedMesh.bounds;
+            collisionDirections.Clear();
 
             //construct the capsule
+            Bounds bounds = boat.MeshCollider.sharedMesh.bounds;
             Vector3 start = boat.MeshCollider.bounds.center;
             float radius = bounds.extents.x;
             Vector3 length = boat.MeshObject.transform.forward * (bounds.extents.z - radius);
             Vector3 p1 = start + length;
             Vector3 p2 = start - length;
-
-            /*Debug.DrawLine(p1, p2, Color.green, 1, false);
-            Debug.DrawRay(p1, boat.MeshObject.transform.forward * radius, Color.yellow, 1, false);
-            Debug.DrawRay(p1, boat.MeshObject.transform.right * radius, Color.yellow, 1, false);
-            Debug.DrawRay(p1, -boat.MeshObject.transform.right * radius, Color.yellow, 1, false);
-            Debug.DrawRay(p1, boat.MeshObject.transform.up * radius, Color.yellow, 1, false);
-            Debug.DrawRay(p1, -boat.MeshObject.transform.up * radius, Color.yellow, 1, false);
-            Debug.DrawRay(p2, -boat.MeshObject.transform.forward * radius, Color.blue, 1, false);
-            Debug.DrawRay(p2, boat.MeshObject.transform.right * radius, Color.blue, 1, false);
-            Debug.DrawRay(p2, -boat.MeshObject.transform.right * radius, Color.blue, 1, false);
-            Debug.DrawRay(p2, boat.MeshObject.transform.up * radius, Color.blue, 1, false);
-            Debug.DrawRay(p2, -boat.MeshObject.transform.up * radius, Color.blue, 1, false);*/
-
-
-            //capsulecast in movement direction
-            /*
-            RaycastHit hit = new RaycastHit();
-            if (Physics.CapsuleCast(p1,p2,radius,MoveVectorCurrent.normalized, out hit, 1))
-            {
-                Debug.Log("COME SAIL AWAY - BOAT COLLIDED WITH SOMETHING");
-                MoveVectorTarget = -MoveVectorTarget;
-                MoveVectorCurrent = MoveVectorTarget;
-            }*/
             Vector3 distance = p1 - p2;
 
             //spherecastAll from stern to bow
-            RaycastHit[] hits = Physics.SphereCastAll(p2, radius + 1, distance.normalized, distance.magnitude);
-            collisionDirections.Clear();
+            RaycastHit[] hits = Physics.SphereCastAll(start, radius, (p1 - p2).normalized, distance.magnitude, layerMask, QueryTriggerInteraction.Ignore);
             if (hits.Length > 0)
             {
                 foreach (RaycastHit hit in hits)
@@ -2559,7 +2751,22 @@ namespace ComeSailAwayMod
                     if (hit.collider.transform.root != boat.GameObject.transform && terrain == null && entity == null)
                     {
                         Debug.Log("COME SAIL AWAY - BOAT COLLIDED WITH " + hit.collider.name);
-                        collisionDirections.Add(Vector3.ProjectOnPlane(boat.GameObject.transform.position - hit.collider.ClosestPointOnBounds(boat.GameObject.transform.position), Vector3.up).normalized);
+                        collisionDirections.Add(Vector3.ProjectOnPlane(boat.GameObject.transform.position - hit.point, Vector3.up).normalized);
+                    }
+                }
+            }
+            //spherecastAll from bow to stern
+            hits = Physics.SphereCastAll(start, radius, (p2-p1).normalized, distance.magnitude, layerMask,QueryTriggerInteraction.Ignore);
+            if (hits.Length > 0)
+            {
+                foreach (RaycastHit hit in hits)
+                {
+                    Terrain terrain = hit.collider.GetComponent<Terrain>();
+                    DaggerfallEntityBehaviour entity = hit.collider.GetComponent<DaggerfallEntityBehaviour>();
+                    if (hit.collider.transform.root != boat.GameObject.transform && hit.point != Vector3.zero && terrain == null && entity == null)
+                    {
+                        Debug.Log("COME SAIL AWAY - BOAT COLLIDED WITH " + hit.collider.name);
+                        collisionDirections.Add(Vector3.ProjectOnPlane(boat.GameObject.transform.position - hit.point, Vector3.up).normalized);
                     }
                 }
             }
@@ -2568,14 +2775,19 @@ namespace ComeSailAwayMod
             {
                 if (timeScaleIndex > 0)
                     ResetTimeScale();
-                MoveVectorTarget += boat.GameObject.transform.InverseTransformDirection(combinedCollisionDirection).normalized * Time.fixedDeltaTime * 100;
-                MoveVectorCurrent = MoveVectorTarget;
+                Vector3 collisionVector = boat.GameObject.transform.InverseTransformDirection(combinedCollisionDirection).normalized;
+                Debug.DrawRay(CurrentBoat.GameObject.transform.position, collisionVector * -10, Color.red, 3);
+                CollisionVector = collisionVector;
+            }
+            else
+            {
+                CollisionVector = Vector3.zero;
             }
         }
 
         void UpdateAllBoatsNodes()
         {
-            if (AllBoats.Count < 1)
+            if (AllBoats.Count < 1 || GameManager.Instance.PlayerEnterExit.IsPlayerInside)
                 return;
 
             foreach (Boat boat in AllBoats)
@@ -2589,9 +2801,40 @@ namespace ComeSailAwayMod
         }
         void UpdateBoatNodes(Boat boat, Terrain terrain = null)
         {
+            if (GameManager.Instance.PlayerEnterExit.IsPlayerInside)
+            {
+                if (GameManager.Instance.PlayerEnterExit.blockWaterLevel != 10000)
+                {
+                    for (int i = 0; i < boat.NodeTileMapIndices.Length; i++)
+                    {
+                        boat.NodeTileMapIndices[i] = 0;
+                    }
+                }
+                return;
+            }
+
             Transform terrainTransform = GameManager.Instance.StreamingWorld.PlayerTerrainTransform;
             if (terrain != null)
                 terrainTransform = terrain.transform;
+
+            // concept for jet082's deep water mod
+            if (IliacPuddleNoMore != null)
+            {
+                Terrain targetTerrain = terrainTransform.GetComponent<Terrain>();
+
+                for (int i = 0; i < boat.NodeTileMapIndices.Length; i++)
+                {
+                    float height = 100;
+                    height = targetTerrain.SampleHeight(boat.Nodes[i].transform.position);
+
+                    if (height < WaterLevel)
+                        boat.NodeTileMapIndices[i] = 0;
+                    else
+                        boat.NodeTileMapIndices[i] = 1;
+                }
+                return;
+            }
+
             for (int i = 0; i < boat.NodeTileMapIndices.Length; i++)
             {
                 boat.NodeTileMapIndices[i] = GetTileMapIndexAtPosition(boat.Nodes[i].transform.position, terrainTransform);
@@ -2599,6 +2842,18 @@ namespace ComeSailAwayMod
         }
         void UpdateBoatNodes(Boat boat, DFPosition mapPixel)
         {
+            if (GameManager.Instance.PlayerEnterExit.IsPlayerInside)
+            {
+                if (GameManager.Instance.PlayerEnterExit.blockWaterLevel != 10000)
+                {
+                    for (int i = 0; i < boat.NodeTileMapIndices.Length; i++)
+                    {
+                        boat.NodeTileMapIndices[i] = 0;
+                    }
+                }
+                return;
+            }
+
             /*DFPosition playerMapPixel = GameManager.Instance.PlayerGPS.CurrentMapPixel;
             if (Mathf.Max(Mathf.Abs(playerMapPixel.X - mapPixel.X), Mathf.Abs(playerMapPixel.Y - mapPixel.Y)) > 1)
             {
@@ -2610,6 +2865,24 @@ namespace ComeSailAwayMod
             if (terrainTransform == null)
                 return;
 
+            // concept for jet082's deep water mod
+            if (IliacPuddleNoMore != null)
+            {
+                Terrain targetTerrain = terrainTransform.GetComponent<Terrain>();
+
+                for (int i = 0; i < boat.NodeTileMapIndices.Length; i++)
+                {
+                    float height = 100;
+                    height = targetTerrain.SampleHeight(boat.Nodes[i].transform.position);
+
+                    if (height < WaterLevel)
+                        boat.NodeTileMapIndices[i] = 0;
+                    else
+                        boat.NodeTileMapIndices[i] = 1;
+                }
+                return;
+            }
+
             for (int i = 0; i < boat.NodeTileMapIndices.Length; i++)
             {
                 boat.NodeTileMapIndices[i] = GetTileMapIndexAtPosition(boat.Nodes[i].transform.position, terrainTransform);
@@ -2620,68 +2893,92 @@ namespace ComeSailAwayMod
         {
             if (AllBoats.Count < 1)
                 return;
-
-            //hide boats if player is inside building or boat is outside the range of rendered map pixels
+            
             if (GameManager.Instance.PlayerEnterExit.IsPlayerInside)
             {
+                //if player is inside building, hide boats that are not inside nor in the same Map Pixel
                 foreach (Boat boat in AllBoats)
                 {
-                    if (boat.GameObject.activeSelf)
-                        boat.GameObject.SetActive(false);
+                    if (boat.inside && boat.MapPixel.X == GameManager.Instance.PlayerGPS.CurrentMapPixel.X && boat.MapPixel.Y == GameManager.Instance.PlayerGPS.CurrentMapPixel.Y)
+                    {
+                        if (!boat.GameObject.activeSelf)
+                            boat.GameObject.SetActive(true);
+                    }
+                    else
+                    {
+                        if (boat.GameObject.activeSelf)
+                            boat.GameObject.SetActive(false);
+                    }
                 }
-                return;
             }
-
-            int x = GameManager.Instance.PlayerGPS.CurrentMapPixel.X;
-            int y = GameManager.Instance.PlayerGPS.CurrentMapPixel.Y;
-
-            //hide boat if it is in a map pixel not adjacent to the player's
-            foreach (Boat boat in AllBoats)
+            else
             {
-                if (boat.MapPixel != null && Mathf.Max(Mathf.Abs(x - boat.MapPixel.X), Mathf.Abs(y - boat.MapPixel.Y)) > 1)
+                List<Boat> destroyBoats = new List<Boat>();
+
+                //hide boat if it is in a map pixel not adjacent to the player's
+                foreach (Boat boat in AllBoats)
                 {
-                    if (boat.GameObject.activeSelf)
-                        boat.GameObject.SetActive(false);
-                    continue;
+                    if (boat.inside || (boat.MapPixel != null && Mathf.Max(Mathf.Abs(GameManager.Instance.PlayerGPS.CurrentMapPixel.X - boat.MapPixel.X), Mathf.Abs(GameManager.Instance.PlayerGPS.CurrentMapPixel.Y - boat.MapPixel.Y)) > 1))
+                    {
+                        if (boat.inside && !PersistentDungeonBoats)
+                            destroyBoats.Add(boat);
+
+                        if (boat.GameObject.activeSelf)
+                            boat.GameObject.SetActive(false);
+                        continue;
+                    }
+
+                    if (!boat.GameObject.activeSelf)
+                        boat.GameObject.SetActive(true);
+
+                    UpdateBoatNodes(boat, boat.MapPixel);
                 }
 
-                if (!boat.GameObject.activeSelf)
-                    boat.GameObject.SetActive(true);
-
-                UpdateBoatNodes(boat, boat.MapPixel);
+                if (destroyBoats.Count > 0)
+                {
+                    foreach (Boat boat in destroyBoats)
+                    {
+                        AllBoats.Remove(boat);
+                        Destroy(boat.GameObject);
+                    }
+                }
             }
         }
 
         public void UpdateBoatVisibility(Boat boat)
         {
-            if (AllBoats.Count < 1)
+            if (boat == null)
                 return;
 
-            //hide boats if player is inside building or boat is outside the range of rendered map pixels
             if (GameManager.Instance.PlayerEnterExit.IsPlayerInside)
             {
-                if (boat.GameObject.activeSelf)
-                    boat.GameObject.SetActive(false);
-
-                return;
-            }
-
-            int x = GameManager.Instance.PlayerGPS.CurrentMapPixel.X;
-            int y = GameManager.Instance.PlayerGPS.CurrentMapPixel.Y;
-
-            //hide boat if it is in a map pixel not adjacent to the player's
-            if (boat.MapPixel != null && Mathf.Max(Mathf.Abs(x - boat.MapPixel.X), Mathf.Abs(y - boat.MapPixel.Y)) > 1)
-            {
-                if (boat.GameObject.activeSelf)
-                    boat.GameObject.SetActive(false);
+                if (boat.inside && boat.MapPixel.X == GameManager.Instance.PlayerGPS.CurrentMapPixel.X && boat.MapPixel.Y == GameManager.Instance.PlayerGPS.CurrentMapPixel.Y)
+                {
+                    if (!boat.GameObject.activeSelf)
+                        boat.GameObject.SetActive(true);
+                }
+                else
+                {
+                    if (boat.GameObject.activeSelf)
+                        boat.GameObject.SetActive(false);
+                }
             }
             else
             {
-                if (!boat.GameObject.activeSelf)
-                    boat.GameObject.SetActive(true);
-            }
+                //hide boat if it is in a map pixel not adjacent to the player's
+                if (boat.inside || (boat.MapPixel != null && Mathf.Max(Mathf.Abs(GameManager.Instance.PlayerGPS.CurrentMapPixel.X - boat.MapPixel.X), Mathf.Abs(GameManager.Instance.PlayerGPS.CurrentMapPixel.Y - boat.MapPixel.Y)) > 1))
+                {
+                    if (boat.GameObject.activeSelf)
+                        boat.GameObject.SetActive(false);
+                }
+                else
+                {
+                    if (!boat.GameObject.activeSelf)
+                        boat.GameObject.SetActive(true);
+                }
 
-            UpdateBoatNodes(boat, boat.MapPixel);
+                UpdateBoatNodes(boat, boat.MapPixel);
+            }
         }
 
         void UpdateBoatCargoMod(Boat boat)
@@ -2721,6 +3018,13 @@ namespace ComeSailAwayMod
 
         void UpdateWind(DaggerfallWorkshop.Game.Weather.WeatherType weather)
         {
+            if (GameManager.Instance.PlayerEnterExit.IsPlayerInside)
+            {
+                windVectorTarget = Vector3.zero;
+                windVectorCurrent = Vector3.zero;
+                return;
+            }
+
             //strength
             float windStrength = UnityEngine.Random.Range(1f, 2f);
             if (weather == DaggerfallWorkshop.Game.Weather.WeatherType.Fog)
@@ -2768,9 +3072,6 @@ namespace ComeSailAwayMod
 
         private void OnGUI()
         {
-            if (!IsSailing || GameManager.IsGamePaused || InputManager.Instance.IsPaused || SaveLoadManager.Instance.LoadInProgress)
-                return;
-
             GUI.depth = -1;
 
             if (DaggerfallUI.Instance.CustomScreenRect != null)
@@ -2800,6 +3101,76 @@ namespace ComeSailAwayMod
             if (DaggerfallUI.Instance.DaggerfallHUD != null && DaggerfallUnity.Settings.LargeHUD && DaggerfallUnity.Settings.LargeHUDOffsetHorse)
                 LargeHudOffset = (int)DaggerfallUI.Instance.DaggerfallHUD.LargeHUD.ScreenHeight;
 
+            //Draw world map
+            if (mapShowing)
+            {
+                //Draw backdrop
+                Color backgroundColor = Color.black;
+                backgroundColor.a = mapBackdropOpacity;
+                Rect backgroundRect = new Rect(0, 0, Screen.width, Screen.height);
+                DaggerfallUI.DrawTexture(backgroundRect, lineTexture, ScaleMode.StretchToFill, true, backgroundColor);
+
+                float mapTextureWidth = 1000 * screenScaleX;
+                float mapTextureHeight = 500 * screenScaleY;
+                Rect mapTextureRect = new Rect(screenRect.x + (screenRect.width * screenScaleX) / 2 - (mapTextureWidth / 2), screenRect.y + (screenRect.height * screenScaleY) / 2 - (mapTextureHeight / 2), mapTextureWidth, mapTextureHeight);
+                DaggerfallUI.DrawTexture(mapTextureRect, mapTexture, ScaleMode.StretchToFill, false, Color.white);
+
+                Vector2 mousePosRaw = new Vector2(InputManager.Instance.MousePosition.x, screenRect.height - InputManager.Instance.MousePosition.y);
+                Vector2Int mouseMapPos = new Vector2Int(Mathf.RoundToInt(mousePosRaw.x - mapTextureRect.x), Mathf.RoundToInt(mousePosRaw.y - mapTextureRect.y));
+
+                //draw current position
+                if (mapShowingPosition && Mathf.Sin(Time.unscaledTime*5) > 0)
+                {
+                    DFPosition mapPixel = GameManager.Instance.PlayerGPS.CurrentMapPixel;
+                    Rect latitudeRect = new Rect(mapTextureRect.x + (mapPixel.X * screenScaleX - mapLineThicknessFinal), mapTextureRect.y, 1 + (mapLineThicknessFinal * 2), mapTextureHeight);
+                    Rect longitudeRect = new Rect(mapTextureRect.x, mapTextureRect.y + (mapPixel.Y * screenScaleY) - mapLineThicknessFinal, mapTextureWidth, 1 + (mapLineThicknessFinal * 2));
+                    DaggerfallUI.DrawTexture(latitudeRect, lineTexture, ScaleMode.StretchToFill, false, Color.red);
+                    DaggerfallUI.DrawTexture(longitudeRect, lineTexture, ScaleMode.StretchToFill, false, Color.red);
+                }
+
+                //draw help text
+                DaggerfallUI.DefaultFont.DrawText("LMB click to place a marker", backgroundRect.position, Vector2.one * 3, DaggerfallUI.DaggerfallDefaultTextColor, Color.black, DaggerfallUI.DaggerfallDefaultShadowPos * 3);
+                DaggerfallUI.DefaultFont.DrawText("RMB click to remove a marker", backgroundRect.position + (Vector2.up * 20), Vector2.one * 3, DaggerfallUI.DaggerfallDefaultTextColor, Color.black, DaggerfallUI.DaggerfallDefaultShadowPos * 3);
+                DaggerfallUI.DefaultFont.DrawText("Press Keys 1-8 to change marker color", backgroundRect.position + (Vector2.up * 40), Vector2.one * 3, DaggerfallUI.DaggerfallDefaultTextColor, Color.black, DaggerfallUI.DaggerfallDefaultShadowPos * 3);
+                DaggerfallUI.DefaultFont.DrawText("Hold Left Shift to change marker precision", backgroundRect.position + (Vector2.up * 60), Vector2.one * 3, DaggerfallUI.DaggerfallDefaultTextColor, Color.black, DaggerfallUI.DaggerfallDefaultShadowPos * 3);
+                DaggerfallUI.DefaultFont.DrawText("Press ESC to exit", backgroundRect.position + (Vector2.up * 80), Vector2.one * 3, DaggerfallUI.DaggerfallDefaultTextColor, Color.black, DaggerfallUI.DaggerfallDefaultShadowPos * 3);
+
+                DaggerfallUI.DefaultFont.DrawText("Current marker color is " + mapMarkerModeLabels[mapMarkerMode], backgroundRect.position + (Vector2.up * (backgroundRect.height - 20)), Vector2.one * 3, DaggerfallUI.DaggerfallDefaultTextColor, Color.black, DaggerfallUI.DaggerfallDefaultShadowPos * 3);
+
+                //draw map markers
+                for (int i = 0; i < mapMarkers.Count; i++)
+                {
+                    Vector2Int mapPos = mapMarkers[i].position;
+                    Rect markerRect = new Rect(mapTextureRect.x + mapPos.x- mapMarkerThicknessFinal, mapTextureRect.y- mapMarkerThicknessFinal + mapPos.y, 1 + (mapMarkerThicknessFinal * 2), 1 + (mapMarkerThicknessFinal * 2));
+
+                    if (mapMarkerOutlineThicknessFinal != 0)
+                    {
+                        Rect markerOutlineRect = new Rect(markerRect.x - mapMarkerOutlineThicknessFinal, markerRect.y - mapMarkerOutlineThicknessFinal, markerRect.width + (mapMarkerOutlineThicknessFinal * 2), markerRect.height + (mapMarkerOutlineThicknessFinal * 2));
+                        DaggerfallUI.DrawTexture(markerOutlineRect, lineTexture, ScaleMode.StretchToFill, false, Color.black); //outline
+                    }
+
+                    DaggerfallUI.DrawTexture(markerRect, lineTexture, ScaleMode.StretchToFill, false, mapMarkers[i].color);
+                }
+
+                //draw map marker labels
+                //prevents markers from being drawn on top of labels
+                for (int i = 0; i < mapMarkers.Count; i++)
+                {
+                    Vector2Int mapPos = mapMarkers[i].position;
+                    Rect markerRect = new Rect(mapTextureRect.x + mapPos.x - mapMarkerThickness, mapTextureRect.y - mapMarkerThickness + mapPos.y, 1 + (mapMarkerThickness * 2), 1 + (mapMarkerThickness * 2));
+
+                    //draw label if mouse is near the marker
+                    if (Vector2Int.Distance(mouseMapPos, mapMarkers[i].position) <= mapMarkerClickRange)
+                        DaggerfallUI.DefaultFont.DrawText(mapMarkers[i].label, markerRect.position + (Vector2.right * 10) + (Vector2.down * 20), Vector2.one * 3, DaggerfallUI.DaggerfallDefaultTextColor, Color.black, DaggerfallUI.DaggerfallDefaultShadowPos * 3);
+                }
+            }
+
+            if (GameManager.IsGamePaused || InputManager.Instance.IsPaused || SaveLoadManager.Instance.LoadInProgress)
+                return;
+
+            if (!IsSailing)
+                return;
+
             //draw wind direction indicator
             //animate the windDirectionWidget indicator to show the angle
             if (windDirectionWidget)
@@ -2828,20 +3199,13 @@ namespace ComeSailAwayMod
                 return;
             }
 
-            if (wasPaused && Time.timeScale != 1)
-            {
-                timeScaleIndex = 0;
-                SetTimeScale(currentTimeScale[timeScaleIndex], false);
-            }
+            if (wasPaused && Time.timeScale != 1 && !isTravelling)
+                ResetTimeScale();
 
             wasPaused = false;
 
-            if (IsSailing)
+            if (IsSailing && CurrentBoat != null)
             {
-                if (GameManager.Instance.PlayerMotor.OnExteriorWater == PlayerMotor.OnExteriorWaterMethod.Swimming)
-                {
-                }
-
                 if (GameManager.Instance.SpeedChanger.isRunning)
                     GameManager.Instance.SpeedChanger.isRunning = false;
 
@@ -2858,7 +3222,7 @@ namespace ComeSailAwayMod
                 if (timeScaleIndex != 0 && GameManager.Instance.AreEnemiesNearby())
                 {
                     DaggerfallUI.SetMidScreenText("There are enemies nearby...");
-                    ResetTimeScale();
+                    ResetTimeScale(false);
                 }
 
                 //update input
@@ -3036,6 +3400,7 @@ namespace ComeSailAwayMod
                         bool upwind = Mathf.Abs(hullWindAngle) > 90;
                         float maxAngle = 60;
 
+                        int index = 0;
                         foreach (Transform sail in CurrentBoat.Sails)
                         {
                             float windFactor = 0;
@@ -3076,18 +3441,38 @@ namespace ComeSailAwayMod
                             else if (CurrentBoat.SailsStay.Contains(sail))
                             {
                                 if (sailWindAngle > 0 && sailWindAngle <= 90)
-                                    windFactor = Mathf.Lerp(0, 0.5f, sailWindAngle / 90);
+                                    windFactor = Mathf.Lerp(1, 0.25f, sailWindAngle / 90);
                                 else if (sailWindAngle > 90 && sailWindAngle <= 180)
-                                    windFactor = Mathf.Lerp(0.5f, 1, (sailWindAngle - 90) / 90);
+                                    windFactor = Mathf.Lerp(0.25f, 0, (sailWindAngle - 90) / 90);
                                 else if (sailWindAngle <= 0 && sailWindAngle > -90)
-                                    windFactor = Mathf.Lerp(0, -0.5f, sailWindAngle / -90);
+                                    windFactor = Mathf.Lerp(-1, -0.25f, sailWindAngle / -90);
                                 else if (sailWindAngle <= -90 && sailWindAngle > -180)
-                                    windFactor = Mathf.Lerp(-0.5f, -1, (sailWindAngle + 90) / -90);
+                                    windFactor = Mathf.Lerp(-0.25f, 0, (sailWindAngle + 90) / -90);
                             }
 
                             Animator animator = sail.GetComponent<Animator>();
                             if (animator != null)
-                                animator.SetFloat("Wind", windFactor);
+                            {
+                                float sailPoof = animator.GetFloat("Wind");
+                                if (!CurrentBoat.SailsSquare.Contains(sail) &&
+                                    ((!CurrentBoat.SailsLateen.Contains(sail) && (sailWindAngle > 150 || sailWindAngle < -150)) ||
+                                        (CurrentBoat.SailsLateen.Contains(sail) && (sailWindAngle > 165 || sailWindAngle < -165))))
+                                {
+                                    float targetPoof = Mathf.Sin((Time.time + index) * 2f) * 0.25f;
+                                    sailPoof = Mathf.MoveTowards(sailPoof, targetPoof, Time.deltaTime);
+                                }
+                                else
+                                {
+                                    float targetPoof = Mathf.Sign(windFactor) * (windVectorCurrent.magnitude);
+                                    if (CurrentBoat.SailsStay.Contains(sail))
+                                    {
+                                        sailPoof = Mathf.MoveTowards(sailPoof, windFactor, Time.deltaTime);
+                                    }
+                                    else
+                                        sailPoof = Mathf.MoveTowards(sailPoof, targetPoof, Time.deltaTime);
+                                }
+                                animator.SetFloat("Wind", sailPoof);
+                            }
 
                             if (trimAutoSquareUpwind)
                             {
@@ -3110,31 +3495,7 @@ namespace ComeSailAwayMod
                                     }
                                 }
                             }
-
-                            /*if (trimAutoGaffLargeSquare)
-                            {
-                                //stow Gaff sails if has large square sail and travelling downwind
-                                if (CurrentBoat.SailsGaff.Contains(sail))
-                                {
-                                    if (HasLargeSquareSail(CurrentBoat))
-                                    {
-                                        if (animator != null)
-                                        {
-                                            bool stowed = animator.GetBool("Stowed");
-                                            if (upwind && stowed)
-                                            {
-                                                animator.CrossFade("Unstowed", sailAnimationSpeed);
-                                                animator.SetBool("Stowed", false);
-                                            }
-                                            else if (!upwind && !stowed)
-                                            {
-                                                animator.CrossFade("Stowed", sailAnimationSpeed);
-                                                animator.SetBool("Stowed", true);
-                                            }
-                                        }
-                                    }
-                                }
-                            }*/
+                            index++;
                         }
 
                         if (trimAuto)
@@ -3358,9 +3719,28 @@ namespace ComeSailAwayMod
             if (GameManager.IsGamePaused || InputManager.Instance.IsPaused || SaveLoadManager.Instance.LoadInProgress)
                 return;
 
+            if (TravelOptions != null)
+            {
+                ModManager.Instance.SendModMessage(TravelOptions.Title, "isTravelActive", null, (string message, object data) =>
+                {
+                    isTravelling = (bool)data;
+                });
+
+                if (isTravelling && !wasTravelling)
+                {
+                    //started travelling
+                    wasTravelling = isTravelling;
+                }
+
+                if (!isTravelling && wasTravelling)
+                {
+                    //stopped travelling
+                    wasTravelling = isTravelling;
+                }
+            }
+
             if (IsSailing)
             {
-
                 if (lastBoatPosition != CurrentBoat.GameObject.transform.position || lastBoatDirection != CurrentBoat.GameObject.transform.forward)
                 {
                     //position/direction changed
@@ -3371,14 +3751,20 @@ namespace ComeSailAwayMod
 
                 if (!IsBeached(CurrentBoat))
                 {
-                    velocityCurrent = MoveVectorCurrent + CurrentBoat.GameObject.transform.InverseTransformDirection(currentVector);
+                    Vector3 currentVectorLocal = CurrentBoat.GameObject.transform.InverseTransformDirection(currentVector);
+                    if (CollisionVector != Vector3.zero)
+                    {
+                        MoveVectorCurrent = Vector3.ProjectOnPlane(MoveVectorCurrent, CollisionVector) + (CollisionVector);
+                        currentVectorLocal = Vector3.ProjectOnPlane(currentVectorLocal, CollisionVector);
+                    }
+                    velocityCurrent = MoveVectorCurrent + currentVectorLocal;
                     CurrentBoat.GameObject.transform.Translate(velocityCurrent * Time.deltaTime);
                     CurrentBoat.GameObject.transform.Rotate(Vector3.up * TurnCurrent * Time.deltaTime);
                 }
             }
             else
             {
-                if (placing && InputManager.Instance.ActionComplete(InputManager.Actions.ActivateCenterObject) && !GameManager.Instance.PlayerEnterExit.IsPlayerInside && Time.time - placeTime > 0.2f)
+                if (placing && InputManager.Instance.ActionComplete(InputManager.Actions.ActivateCenterObject) && Time.time - placeTime > 0.2f)
                 {
                     int hull = GetHullFromMessage(placeItem.message);
                     int variant = GetVariantFromMessage(placeItem.message);
@@ -3399,26 +3785,30 @@ namespace ComeSailAwayMod
                     //check if player is inside meshcollider bounds
                     Bounds boatBounds = boat.MeshCollider.sharedMesh.bounds;
                     Vector3 playerPos = boat.MeshObject.transform.InverseTransformPoint(GameManager.Instance.PlayerObject.transform.position);
-                    playerPos.y = boatBounds.center.y;
+
+                    //do not normalize player height if using jet082's deep water mod
+                    if (IliacPuddleNoMore == null)
+                        playerPos.y = boatBounds.center.y;
 
 #if (UNITY_EDITOR)
-                    //DrawBox(boat.MeshObject.transform.position+ boat.MeshObject.transform.TransformVector(boatBounds.center), boat.MeshObject.transform.rotation, boatBounds.extents*2, Color.red, 1);
+                    DrawBox(boat.MeshObject.transform.position + boat.MeshObject.transform.TransformVector(boatBounds.center), boat.MeshObject.transform.rotation, boatBounds.extents * 2, Color.red, 1);
+                    Vector3 playerPosWorld = boat.MeshObject.transform.TransformPoint(playerPos);
+                    Debug.DrawLine(playerPosWorld + Vector3.right, playerPosWorld + Vector3.left, Color.green, 1);
+                    Debug.DrawLine(playerPosWorld + Vector3.up, playerPosWorld + Vector3.down, Color.green, 1);
+                    Debug.DrawLine(playerPosWorld + Vector3.forward, playerPosWorld + Vector3.back, Color.green, 1);
 #endif
 
                     if (boatBounds.Contains(playerPos))
                         IsOnABoat = true;
 
-
-
                     //animate the boats
                     if (!IsBeached(boat))
                     {
                         float windStrength = windVectorCurrent.magnitude;
-                        float time = Time.time + i;
                         float turning = 0;
                         if (boat == CurrentBoat)
                             turning = MoveVectorCurrent.magnitude < wakeThreshold ? 0 : (TurnCurrent / turnSpeedSail) * ((MoveVectorCurrent.magnitude * 0.1f) / moveSpeedSail);
-                        if (AnimatedWater != null && AWVertexWaves)
+                        if (AnimatedWater != null && AWVertexWaves && timeScaleIndex == 0)
                         {
                             bool crest = false;
                             Vector3 heightCenter = boat.Nodes[0].transform.position;
@@ -3441,16 +3831,18 @@ namespace ComeSailAwayMod
                                         crest = true;
                                 });
 
-                            Vector3 targetPosition = boat.MeshObjectOffset + (Vector3.up * (heightCenter.y- boat.Nodes[0].transform.position.y));
+                            Vector3 targetPosition = boat.MeshObjectOffset + (Vector3.up * (heightCenter.y - boat.Nodes[0].transform.position.y));
                             boat.MeshObject.transform.localPosition = Vector3.Lerp(boat.MeshObject.transform.localPosition, targetPosition, Time.deltaTime * (5 * boat.modifierAnimation));
                             Vector3 angleVector = crest ? heightFore - heightCenter : heightFore - heightAft;
                             Quaternion targetRotation = Quaternion.Euler((Vector3.forward * (Mathf.Clamp(-turning * 5, -30, 30) + (Vector3.SignedAngle(boat.GameObject.transform.right, heightStarboard - heightPort, boat.GameObject.transform.forward) * 1)) +
                                 (Vector3.right * (Vector3.SignedAngle(boat.GameObject.transform.forward, angleVector, boat.GameObject.transform.right) * 1))) *
                                 boat.modifierAnimation);
-                            boat.MeshObject.transform.localRotation = Quaternion.Lerp(boat.MeshObject.transform.localRotation,targetRotation,Time.deltaTime * (5 * boat.modifierAnimation));
+                            boat.MeshObject.transform.localRotation = Quaternion.Lerp(boat.MeshObject.transform.localRotation, targetRotation, Time.deltaTime * (5 * boat.modifierAnimation));
                         }
                         else
                         {
+                            float time = Time.time + i;
+                            time /= currentTimeScale[timeScaleIndex];
                             boat.MeshObject.transform.localEulerAngles =
                                 (Vector3.forward * (Mathf.Clamp(-turning * 5, -30, 30) + (Mathf.Sin(time * 0.5f * windStrength) * windStrength))) +
                                 (Vector3.right * (Mathf.Sin(time * windStrength) * windStrength))
@@ -3480,39 +3872,51 @@ namespace ComeSailAwayMod
             if (GameManager.IsGamePaused || InputManager.Instance.IsPaused || SaveLoadManager.Instance.LoadInProgress)
                 return;
 
-            if (!GameManager.Instance.PlayerEnterExit.IsPlayerInside && AllBoats.Count > 0)
+            if (AllBoats.Count > 0)
             {
                 Transform bestParent = GameObjectHelper.GetBestParent();
-                //parent stuff
-                foreach (GameObject enemy in ActiveGameObjectDatabase.GetActiveEnemyObjects())
+                if (bestParent != null)
                 {
-                    CharacterController controller = enemy.GetComponent<CharacterController>();
-                    if (controller == null)
-                        continue;
-
-                    //raycast downwards
-                    //if hit is player's currentboat and parent is not player's boatMeshObject, parent to boatMeshObject
-                    Ray ray = new Ray(enemy.transform.position, Vector3.down);
-                    RaycastHit hit = new RaycastHit();
-                    if (Physics.Raycast(ray, out hit, controller.height))
+                    //parent stuff
+                    foreach (GameObject enemy in ActiveGameObjectDatabase.GetActiveEnemyObjects())
                     {
-                        Boat hitBoat = null;
-                        foreach (Boat boat in AllBoats)
-                        {
-                            if (hit.collider.transform == boat.MeshCollider.transform)
-                            {
-                                hitBoat = boat;
-                                break;
-                            }
-                        }
+                        CharacterController controller = enemy.GetComponent<CharacterController>();
+                        if (controller == null)
+                            continue;
 
-                        if (hitBoat != null && controller.isGrounded)
+                        //raycast downwards
+                        //if hit is player's currentboat and parent is not player's boatMeshObject, parent to boatMeshObject
+                        Ray ray = new Ray(enemy.transform.position, Vector3.down);
+                        RaycastHit hit = new RaycastHit();
+                        if (Physics.Raycast(ray, out hit, controller.height))
                         {
-                            if (enemy.transform.parent != hitBoat.MeshObject.transform)
+                            Boat hitBoat = null;
+                            foreach (Boat boat in AllBoats)
                             {
-                                enemy.transform.SetParent(hitBoat.MeshObject.transform);
-                                if (!parentedObjects.Contains(enemy))
-                                    parentedObjects.Add(enemy);
+                                if (hit.collider.transform == boat.MeshCollider.transform)
+                                {
+                                    hitBoat = boat;
+                                    break;
+                                }
+                            }
+
+                            if (hitBoat != null && controller.isGrounded)
+                            {
+                                if (enemy.transform.parent != hitBoat.MeshObject.transform)
+                                {
+                                    enemy.transform.SetParent(hitBoat.MeshObject.transform);
+                                    if (!parentedObjects.Contains(enemy))
+                                        parentedObjects.Add(enemy);
+                                }
+                            }
+                            else
+                            {
+                                if (enemy.transform.parent != bestParent)
+                                {
+                                    enemy.transform.SetParent(bestParent);
+                                    if (parentedObjects.Contains(enemy))
+                                        parentedObjects.Remove(enemy);
+                                }
                             }
                         }
                         else
@@ -3523,15 +3927,6 @@ namespace ComeSailAwayMod
                                 if (parentedObjects.Contains(enemy))
                                     parentedObjects.Remove(enemy);
                             }
-                        }
-                    }
-                    else
-                    {
-                        if (enemy.transform.parent != bestParent)
-                        {
-                            enemy.transform.SetParent(bestParent);
-                            if (parentedObjects.Contains(enemy))
-                                parentedObjects.Remove(enemy);
                         }
                     }
                 }
@@ -3566,7 +3961,14 @@ namespace ComeSailAwayMod
                         currentVector *= -1;
                 }
                 else
-                    currentVector = windVectorCurrent * 0.5f;
+                {
+                    if (GameManager.Instance.PlayerEnterExit.blockWaterLevel != 10000)
+                        currentVector = Vector3.zero;
+                    else
+                        currentVector = windVectorCurrent * 0.5f;
+                }
+
+
 
                 if (currentVector != currentVectorPrevious)
                 {
@@ -3878,9 +4280,19 @@ namespace ComeSailAwayMod
 
             if (GameManager.Instance.PlayerActivate.CurrentMode == PlayerActivateModes.Steal)
             {
+
                 //pack the boat if able
                 if (hitBoat.packable)
+                {
+                    //make sure hitboat is not the current boat
+                    if (Instance.CurrentBoat != null && Instance.CurrentBoat == hitBoat)
+                    {
+                        DaggerfallUI.SetMidScreenText("You cannot pack a boat you are driving!");
+                        return;
+                    }
+
                     Instance.PackBoat(hitBoat, true);
+                }
             }
             else
             {
@@ -3931,6 +4343,25 @@ namespace ComeSailAwayMod
             DaggerfallUI.MessageBox("Nice Boat!");
         }
 
+        private static void CheckBoatPosition(RaycastHit hit)
+        {
+            Boat hitBoat = null;
+            foreach (Boat boat in Instance.AllBoats)
+            {
+                if (hit.transform.root.gameObject.GetInstanceID() == boat.GameObject.GetInstanceID())
+                {
+                    hitBoat = boat;
+                    break;
+                }
+            }
+
+            if (hitBoat == null)
+                return;
+
+            //Show boat position window
+            Instance.StartShowBoatPosition(hitBoat);
+        }
+
         private static void TriggerDoor(RaycastHit hit)
         {
             Boat hitBoat = null;
@@ -3974,6 +4405,203 @@ namespace ComeSailAwayMod
             }
 
             Instance.OpenCargo(hitBoat);
+        }
+
+        public void StartShowBoatPosition(Boat boat)
+        {
+            if (showingBoatPosition != null)
+                return;
+
+            //draw the map on the UI
+            showingBoatPosition = ShowBoatPositionCoroutine(boat);
+            StartCoroutine(showingBoatPosition);
+        }
+
+        IEnumerator ShowBoatPositionCoroutine(Boat boat)
+        {
+            DaggerfallUI.MessageBox("According to my instruments...");
+
+            yield return new WaitForEndOfFrame();
+
+            while (DaggerfallUI.Instance.UserInterfaceManager.TopWindow is DaggerfallMessageBox)
+                yield return new WaitForEndOfFrame();
+
+            yield return new WaitForEndOfFrame();
+
+            //only take a reading if weather is Sunny or Cloudy
+            //and around noon
+            if ((!mapRestrictWeather ||
+                (mapRestrictWeather && (int)GameManager.Instance.WeatherManager.PlayerWeather.WeatherType < 2)) &&
+                (!mapRestrictTime ||
+                (mapRestrictTime && ((DaggerfallUnity.Instance.WorldTime.Now.Hour > 10 && DaggerfallUnity.Instance.WorldTime.Now.Hour < 13) || (DaggerfallUnity.Instance.WorldTime.Now.Hour > 22 || DaggerfallUnity.Instance.WorldTime.Now.Hour < 1)))))
+            {
+                mapShowingPosition = true;
+                yield return new WaitForEndOfFrame();
+            }
+            else
+            {
+                mapShowingPosition = false;
+                DaggerfallUI.MessageBox("...no good. I can't get a reading at this time.");
+                yield return new WaitForEndOfFrame();
+
+                while (DaggerfallUI.Instance.UserInterfaceManager.TopWindow is DaggerfallMessageBox)
+                    yield return new WaitForEndOfFrame();
+            }
+
+            mapShowing = true;
+
+            yield return new WaitForEndOfFrame();
+
+            while (mapShowing)
+            {
+                if (!GameManager.IsGamePaused)
+                    GameManager.Instance.PauseGame(true, true);
+
+                //number line keys can switch mode
+                if (InputManager.Instance.GetKeyDown(KeyCode.Alpha1))
+                    mapMarkerMode = 0;
+                if (InputManager.Instance.GetKeyDown(KeyCode.Alpha2))
+                    mapMarkerMode = 1;
+                if (InputManager.Instance.GetKeyDown(KeyCode.Alpha3))
+                    mapMarkerMode = 2;
+                if (InputManager.Instance.GetKeyDown(KeyCode.Alpha4))
+                    mapMarkerMode = 3;
+                if (InputManager.Instance.GetKeyDown(KeyCode.Alpha5))
+                    mapMarkerMode = 4;
+                if (InputManager.Instance.GetKeyDown(KeyCode.Alpha6))
+                    mapMarkerMode = 5;
+                if (InputManager.Instance.GetKeyDown(KeyCode.Alpha7))
+                    mapMarkerMode = 6;
+                if (InputManager.Instance.GetKeyDown(KeyCode.Alpha8))
+                    mapMarkerMode = 7;
+
+                //clicking can be used to add/remove map markers
+                if (InputManager.Instance.GetKeyDown(KeyCode.Mouse0))
+                {
+                    //add map marker here
+                    LeftClickOnMap();
+                }
+                if (InputManager.Instance.GetKeyDown(KeyCode.Mouse1))
+                {
+                    //remove map marker here
+                    RightClickOnMap();
+                }
+
+                //exit with ESCAPE
+                if (InputManager.Instance.GetKeyUp(KeyCode.Escape))
+                {
+                    GameManager.Instance.PauseGame(false);
+                    StopShowBoatPosition();
+                }
+
+                yield return new WaitForEndOfFrame();
+            }
+
+            //add delay to prevent instantly re-opening the map
+            yield return new WaitForSeconds(1);
+
+            showingBoatPosition = null;
+        }
+
+        bool IsPositionMarked(Vector2Int pos)
+        {
+            for (int i = 0; i < mapMarkers.Count; i++)
+            {
+                if (mapMarkers[i].position == pos)
+                    return true;
+            }
+
+            return false;
+        }
+
+        public void AddMapMarker(Vector2Int mapPixel, Color color, string label = "")
+        {
+            //clicked on/near current position
+            if (!IsPositionMarked(mapPixel))
+            {
+                mapMarkers.Add(new MapMarker(mapPixel, label, color));
+                return;
+            }
+        }
+
+        void LeftClickOnMap()
+        {
+            float mapTextureWidth = 1000 * screenScaleX;
+            float mapTextureHeight = 500 * screenScaleY;
+            Rect mapTextureRect = new Rect(screenRect.x + (screenRect.width * screenScaleX) / 2 - (mapTextureWidth / 2), screenRect.y + (screenRect.height * screenScaleY) / 2 - (mapTextureHeight / 2), mapTextureWidth, mapTextureHeight);
+
+            //check if mouse pos is inside map rect
+            Vector2 mousePosRaw = new Vector2(InputManager.Instance.MousePosition.x, screenRect.height-InputManager.Instance.MousePosition.y);
+            if (mapTextureRect.Contains(mousePosRaw))
+            {
+                Vector2Int mouseMapPos = new Vector2Int(Mathf.RoundToInt(mousePosRaw.x - mapTextureRect.x), Mathf.RoundToInt(mousePosRaw.y - mapTextureRect.y));
+                Debug.Log("COME SAIL AWAY - MOUSE IS OVER MAP PIXEL " + mouseMapPos.ToString());
+
+                /*if (mapShowingPosition)
+                {
+                    Vector2Int mapPixel = new Vector2Int(GameManager.Instance.PlayerGPS.CurrentMapPixel.X, GameManager.Instance.PlayerGPS.CurrentMapPixel.Y);
+                    //add marker to current position
+                    if (Vector2Int.Distance(mapPixel, mouseMapPos) <= mapMarkerClickRange && mapMarkerMode == 0)
+                    {
+                        //clicked on/near current position
+                        if (!IsPositionMarked(mapPixel))
+                        {
+                            mapMarkers.Add(new MapMarker(mapPixel, DaggerfallUnity.Instance.WorldTime.Now.DateTimeString(), DaggerfallUI.DaggerfallDefaultTextColor));
+                            return;
+                        }
+                    }
+                }*/
+
+                //add custom marker
+                if (!IsPositionMarked(mouseMapPos))
+                {
+                    string label = "(" + mouseMapPos.x.ToString() + ", " + mouseMapPos.y.ToString() + ") - " + DaggerfallUnity.Instance.WorldTime.Now.DayOfMonthWithSuffix + " of " + DaggerfallUnity.Instance.WorldTime.Now.MonthName;
+                    Color color = mapMarkerModeColors[mapMarkerMode];
+
+                    mapMarkers.Add(new MapMarker(mouseMapPos, label, color));
+                    return;
+                }
+            }
+        }
+
+        void RightClickOnMap()
+        {
+            float mapTextureWidth = 1000 * screenScaleX;
+            float mapTextureHeight = 500 * screenScaleY;
+            Rect mapTextureRect = new Rect(screenRect.x + (screenRect.width * screenScaleX) / 2 - (mapTextureWidth / 2), screenRect.y + (screenRect.height * screenScaleY) / 2 - (mapTextureHeight / 2), mapTextureWidth, mapTextureHeight);
+
+            //check if mouse pos is inside map rect
+            Vector2 mousePosRaw = new Vector2(InputManager.Instance.MousePosition.x, screenRect.height - InputManager.Instance.MousePosition.y);
+            if (mapTextureRect.Contains(mousePosRaw))
+            {
+                Vector2Int mouseMapPos = new Vector2Int(Mathf.RoundToInt(mousePosRaw.x - mapTextureRect.x), Mathf.RoundToInt(mousePosRaw.y - mapTextureRect.y));
+                Debug.Log("COME SAIL AWAY - MOUSE IS OVER MAP PIXEL " + mouseMapPos.ToString());
+
+                //remove all markers closest to mouse position
+                float currentDistance = 0;
+                float closestDistance = Mathf.Infinity;
+                int closestIndex = -1;
+                for (int i = mapMarkers.Count-1; i > -1; i--)
+                {
+                    currentDistance = Vector2Int.Distance(mapMarkers[i].position, mouseMapPos);
+                    if (currentDistance <= mapMarkerClickRange && currentDistance < closestDistance)
+                    {
+                        closestDistance = currentDistance;
+                        closestIndex = i;
+                    }
+                    else
+                        continue;
+                }
+
+                if (closestIndex != -1)
+                    mapMarkers.RemoveAt(closestIndex);
+            }
+        }
+
+        public void StopShowBoatPosition()
+        {
+            //draw the map on the UI
+            mapShowing = false;
         }
 
         public void StartSailing(Boat boat)
@@ -4317,7 +4945,7 @@ namespace ComeSailAwayMod
 
         void ResetTimeScale(bool message = true)
         {
-            if (timeScaleIndex != 0)
+            if (timeScaleIndex != 0 || Time.timeScale != 1)
             {
                 timeScaleIndex = 0;
                 SetTimeScale(currentTimeScale[timeScaleIndex], message);
@@ -4400,29 +5028,6 @@ namespace ComeSailAwayMod
             {
                 ItemGroups itemGroup = ItemGroups.UselessItems2;
                 int templateIndex = ItemBoatParts.templateIndex;
-
-                /*if (boat.crewed)
-                {
-                    //check if player has a deed with a matching UID
-                    bool hasDeed = false;
-                    for (int i = 0; i < GameManager.Instance.PlayerEntity.Items.Count; i++)
-                    {
-                        DaggerfallUnityItem inventoryItem = GameManager.Instance.PlayerEntity.Items.GetItem(i);
-                        if (inventoryItem.TemplateIndex != ItemBoatDeed.templateIndex)
-                            continue;
-
-                        if (inventoryItem.UID == boat.uid)
-                        {
-                            hasDeed = true;
-                            break;
-                        }
-                    }
-
-                    if (!hasDeed)
-                    {
-                        templateIndex = ItemBoatDeed.templateIndex;
-                    }
-                }*/
 
                 DaggerfallUI.AddHUDText("You store the boat in your inventory");
 
@@ -4530,6 +5135,224 @@ namespace ComeSailAwayMod
             layerMask = layerMask & ~(1 << LayerMask.NameToLayer("Ignore Raycast"));
             if (Physics.Raycast(ray, out hit, 100f, layerMask))
             {
+                //concept to work with jet082's water if ray hit something
+                if (IliacPuddleNoMore != null)
+                {
+                    //CHECK IF THE HIT OBJECT IS A WATER SURFACE
+                    if (hit.collider.name.Contains("DeepWaters"))
+                    {
+                        //we have hit water surface
+                        DaggerfallUI.AddHUDText("Boat placed!");
+
+                        Boat boat = null;
+
+                        //try to get a reference to the terrain underneath the hit point
+                        Terrain terrain = null;
+                        Ray rayTerrain = new Ray(hit.point, Vector3.down);
+                        RaycastHit hitTerrain = new RaycastHit();
+                        if (Physics.Raycast(rayTerrain, out hitTerrain, 100, layerMask, QueryTriggerInteraction.Ignore))
+                            terrain = hitTerrain.collider.GetComponent<Terrain>();
+
+                        if (placeItem != null && placeItem.TemplateIndex == ItemBoatDeed.templateIndex)
+                        {
+                            //if spawned using a deed, check if boat already exists
+                            boat = GetPlacedBoatWithUID(placeItem.UID);
+                        }
+
+                        if (boat == null)
+                            boat = PlaceBoat(new Vector3(hit.point.x, hit.point.y, hit.point.z), GameManager.Instance.PlayerObject.transform.right, hull, variant, terrain);
+                        else
+                            RepositionBoat(boat, new Vector3(hit.point.x, hit.point.y, hit.point.z), GameManager.Instance.PlayerObject.transform.right, terrain);
+
+                        //if spawned from item, check if it has packed cargo
+                        if (placeItem != null)
+                        {
+                            boat.uid = placeItem.UID;
+
+                            if (PackedCargoes.ContainsKey(placeItem.UID))
+                            {
+                                ItemCollection packedCargo = new ItemCollection();
+                                PackedCargoes.TryGetValue(placeItem.UID, out packedCargo);
+                                boat.Cargo.Items.TransferAll(packedCargo);
+                            }
+
+                            if (!boat.crewed)
+                            {
+                                placeItemCollection.RemoveItem(placeItem);
+                            }
+                        }
+
+                        StopPlacing();
+                        return;
+                    }
+
+                    /*//CHECK THE TERRAIN HEIGHT AT THE HIT POINT AND SEE IF IT'S BELOW THE WATER LEVEL
+                    Terrain terrain = null;
+                    Ray rayTerrain = new Ray(hit.point, Vector3.down);
+                    RaycastHit hitTerrain = new RaycastHit();
+                    if (Physics.Raycast(rayTerrain, out hitTerrain, 100, layerMask, QueryTriggerInteraction.Ignore))
+                        terrain = hitTerrain.collider.GetComponent<Terrain>();
+
+                    if (terrain != null && terrain.SampleHeight(hit.point) < WaterLevel)
+                    {
+                        //we have hit water surface
+                        DaggerfallUI.AddHUDText("Boat placed!");
+
+                        Boat boat = null;
+
+                        if (placeItem != null && placeItem.TemplateIndex == ItemBoatDeed.templateIndex)
+                        {
+                            //if spawned using a deed, check if boat already exists
+                            boat = GetPlacedBoatWithUID(placeItem.UID);
+                        }
+
+                        if (boat == null)
+                            boat = PlaceBoat(new Vector3(hit.point.x, hit.point.y, hit.point.z), GameManager.Instance.PlayerObject.transform.right, hull, variant, terrain);
+                        else
+                            RepositionBoat(boat, new Vector3(hit.point.x, hit.point.y, hit.point.z), GameManager.Instance.PlayerObject.transform.right, terrain);
+
+                        //if spawned from item, check if it has packed cargo
+                        if (placeItem != null)
+                        {
+                            boat.uid = placeItem.UID;
+
+                            if (PackedCargoes.ContainsKey(placeItem.UID))
+                            {
+                                ItemCollection packedCargo = new ItemCollection();
+                                PackedCargoes.TryGetValue(placeItem.UID, out packedCargo);
+                                boat.Cargo.Items.TransferAll(packedCargo);
+                            }
+
+                            if (!boat.crewed)
+                            {
+                                placeItemCollection.RemoveItem(placeItem);
+                            }
+                        }
+
+                        StopPlacing();
+                        return;
+                    }
+                    else
+                    {
+                        //hit object is not a water surface object
+                        Debug.Log("COME SAIL AWAY - PLACEMENT DOES NOT INTERSECT WITH PLANE");
+                        StopPlacing();
+                        return;
+                    }*/
+
+                    /*Plane waterPlane = new Plane(Vector3.up, new Vector3(0f, WaterLevel, 0f));
+                    if (waterPlane.Raycast(ray, out float enter))
+                    {
+                        if (enter > 1000f)
+                        {
+                            //intersection with plane is too far
+                            Debug.Log("COME SAIL AWAY - INTERSECTION WITH WATER PLANE IS TOO FAR AT " + enter.ToString());
+                            StopPlacing();
+                            return;
+                        }
+                        else if (hit.distance > enter)
+                        {
+                            //must have intersected with water plane before hitting anything
+                            DaggerfallUI.AddHUDText("Boat placed!");
+
+                            Boat boat = null;
+
+                            if (placeItem != null && placeItem.TemplateIndex == ItemBoatDeed.templateIndex)
+                            {
+                                //if spawned using a deed, check if boat already exists
+                                boat = GetPlacedBoatWithUID(placeItem.UID);
+                            }
+
+                            if (boat == null)
+                                boat = PlaceBoat(ray.origin + (ray.direction * enter), GameManager.Instance.PlayerObject.transform.right, hull, variant, hit.collider.GetComponent<Terrain>());
+                            else
+                                RepositionBoat(boat, ray.origin + (ray.direction * enter), GameManager.Instance.PlayerObject.transform.right, hit.collider.GetComponent<Terrain>());
+
+                            //if spawned from item, check if it has packed cargo
+                            if (placeItem != null)
+                            {
+                                boat.uid = placeItem.UID;
+
+                                if (PackedCargoes.ContainsKey(placeItem.UID))
+                                {
+                                    ItemCollection packedCargo = new ItemCollection();
+                                    PackedCargoes.TryGetValue(placeItem.UID, out packedCargo);
+                                    boat.Cargo.Items.TransferAll(packedCargo);
+                                }
+
+                                if (!boat.crewed)
+                                {
+                                    placeItemCollection.RemoveItem(placeItem);
+                                }
+                            }
+
+                            StopPlacing();
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        //does not intersect with the plane
+                        Debug.Log("COME SAIL AWAY - PLACEMENT DOES NOT INTERSECT WITH PLANE");
+                        StopPlacing();
+                        return;
+                    }*/
+                }
+
+                if (GameManager.Instance.PlayerEnterExit.blockWaterLevel != 10000)
+                {
+                    //player is in a dungeon with a water plane
+                    float y = (float)GameManager.Instance.PlayerEnterExit.blockWaterLevel * -1 * MeshReader.GlobalScale;
+                    Plane waterPlane = new Plane(Vector3.up, new Vector3(0f, y, 0f));
+                    Debug.Log("COME SAIL AWAY - PLACING BOAT IN DUNGEON WITH WATER LEVEL AT " + y.ToString());
+                    if (waterPlane.Raycast(ray, out float enter))
+                    {
+                        if (enter > 100f)
+                        {
+                            //intersection with plane is too far
+                            Debug.Log("COME SAIL AWAY - INTERSECTION WITH WATER PLANE IS TOO FAR AT " + enter.ToString());
+                            StopPlacing();
+                            return;
+                        }
+                        else if (hit.distance > enter)
+                        {
+                            //must have intersected with water plane before hitting anything
+                            DaggerfallUI.AddHUDText("Boat placed!");
+
+                            Boat boat = PlaceBoat(ray.origin + (ray.direction * enter), GameManager.Instance.PlayerObject.transform.right, hull, variant, null);
+                            boat.inside = true;
+
+                            //if spawned from item, check if it has packed cargo
+                            if (placeItem != null)
+                            {
+                                boat.uid = placeItem.UID;
+
+                                if (PackedCargoes.ContainsKey(placeItem.UID))
+                                {
+                                    ItemCollection packedCargo = new ItemCollection();
+                                    PackedCargoes.TryGetValue(placeItem.UID, out packedCargo);
+                                    boat.Cargo.Items.TransferAll(packedCargo);
+                                }
+
+                                if (!boat.crewed)
+                                {
+                                    placeItemCollection.RemoveItem(placeItem);
+                                }
+                            }
+
+                            StopPlacing();
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        //does not intersect with the plane
+                        Debug.Log("COME SAIL AWAY - PLACEMENT DOES NOT INTERSECT WITH PLANE");
+                        StopPlacing();
+                        return;
+                    }
+                }
+
                 if (hit.collider.GetComponent<Terrain>() != null && GetTileMapIndexAtPosition(hit.point, hit.collider.transform) == 0)
                 {
                     //must have hit terrain and water tile
@@ -4575,6 +5398,61 @@ namespace ComeSailAwayMod
                     StopPlacing();
                     return;
                 }
+            }
+            else
+            {
+                //concept to work with jet082's water if ray did not it anything
+                if (IliacPuddleNoMore != null)
+                {
+                    Plane waterPlane = new Plane(Vector3.up, new Vector3(0f, WaterLevel, 0f));
+                    if (waterPlane.Raycast(ray, out float enter))
+                    {
+                        //must have intersected with water plane before hitting anything
+                        DaggerfallUI.AddHUDText("Boat placed!");
+
+                        Boat boat = null;
+
+                        if (placeItem != null && placeItem.TemplateIndex == ItemBoatDeed.templateIndex)
+                        {
+                            //if spawned using a deed, check if boat already exists
+                            boat = GetPlacedBoatWithUID(placeItem.UID);
+                        }
+
+                        if (boat == null)
+                            boat = PlaceBoat(ray.origin + (ray.direction * enter), GameManager.Instance.PlayerObject.transform.right, hull, variant);
+                        else
+                            RepositionBoat(boat, ray.origin + (ray.direction * enter), GameManager.Instance.PlayerObject.transform.right, (Terrain)null);
+
+                        //if spawned from item, check if it has packed cargo
+                        if (placeItem != null)
+                        {
+                            boat.uid = placeItem.UID;
+
+                            if (PackedCargoes.ContainsKey(placeItem.UID))
+                            {
+                                ItemCollection packedCargo = new ItemCollection();
+                                PackedCargoes.TryGetValue(placeItem.UID, out packedCargo);
+                                boat.Cargo.Items.TransferAll(packedCargo);
+                            }
+
+                            if (!boat.crewed)
+                            {
+                                placeItemCollection.RemoveItem(placeItem);
+                            }
+                        }
+
+                        StopPlacing();
+                        return;
+                    }
+                    else
+                    {
+                        //does not intersect with the plane
+                        Debug.Log("COME SAIL AWAY - PLACEMENT DOES NOT INTERSECT WITH PLANE");
+                        StopPlacing();
+                        return;
+                    }
+                }
+
             }
 
             DaggerfallUI.AddHUDText("Placement aborted!", 3);
@@ -4802,7 +5680,6 @@ namespace ComeSailAwayMod
 
                     //adjust price based on thing?
                     item.value = Instance.hullPrices[hull];
-                    item.weightInKg = Instance.hullWeights[hull];
                     item.shortName += " " + Instance.hullNames[hull] + " '" + Instance.variantNames[variant] + "'";
                 }
                 else if (item.TemplateIndex == ItemBoatParts.templateIndex)
@@ -4866,6 +5743,13 @@ namespace ComeSailAwayMod
         public Vector3 Direction;
         public ItemData_v1[] Items;
         public bool lights;
+        public bool inside;
+    }
+    public class MapMarkerData
+    {
+        public Vector2 position;
+        public string label;
+        public Color color;
     }
 
     public class ComeSailAwaySaveData : IHasModSaveData
@@ -4873,6 +5757,7 @@ namespace ComeSailAwayMod
         public Vector3 worldCompensation = Vector3.zero;
 
         public List<PlacedBoatData> placedBoats = new List<PlacedBoatData>();
+        public List<MapMarkerData> placedMapMarkers = new List<MapMarkerData>();
 
         //if the player was sailing
         public int currentBoat = -1;
@@ -4903,6 +5788,7 @@ namespace ComeSailAwayMod
             emptyData.worldCompensation = Vector3.zero;
 
             emptyData.placedBoats = new List<PlacedBoatData>();
+            emptyData.placedMapMarkers = new List<MapMarkerData>();
 
             emptyData.currentBoat = -1;
             emptyData.TemporaryShip = false;
@@ -4936,11 +5822,26 @@ namespace ComeSailAwayMod
                     boatData.Direction = ComeSailAway.Instance.AllBoats[i].GameObject.transform.forward;
                     boatData.Items = ComeSailAway.Instance.AllBoats[i].Cargo.Items.SerializeItems();
                     boatData.lights = ComeSailAway.Instance.AllBoats[i].LightOn;
+                    boatData.inside = ComeSailAway.Instance.AllBoats[i].inside;
 
                     data.placedBoats.Add(boatData);
 
                     if (ComeSailAway.Instance.CurrentBoat == ComeSailAway.Instance.AllBoats[i])
                         currentBoatIndex = i;
+                }
+            }
+
+            if (ComeSailAway.Instance.mapMarkers.Count > 0)
+            {
+                Debug.Log("COME SAIL AWAY - SAVING MAP MARKERS!");
+                for (int i = 0; i < ComeSailAway.Instance.mapMarkers.Count; i++)
+                {
+                    MapMarkerData mapMarkerData = new MapMarkerData();
+                    mapMarkerData.position = ComeSailAway.Instance.mapMarkers[i].position;
+                    mapMarkerData.label = ComeSailAway.Instance.mapMarkers[i].label;
+                    mapMarkerData.color = ComeSailAway.Instance.mapMarkers[i].color;
+                    data.placedMapMarkers.Add(mapMarkerData);
+                    Debug.Log("COME SAIL AWAY - SAVED MAP MARKER AT " + mapMarkerData.position.ToString());
                 }
             }
 
@@ -4978,6 +5879,8 @@ namespace ComeSailAwayMod
                 ComeSailAway.Instance.AllBoats.Clear();
             }
 
+            ComeSailAway.Instance.mapMarkers.Clear();
+
             ComeSailAwaySaveData data = (ComeSailAwaySaveData)dataIn;
 
             float OffsetY = GameManager.Instance.StreamingWorld.WorldCompensation.y - data.worldCompensation.y;
@@ -4992,6 +5895,7 @@ namespace ComeSailAwayMod
                     newBoat.Position = placedBoat.Position + (Vector3.up * OffsetY);
                     newBoat.Direction = placedBoat.Direction;
                     newBoat.MapPixel = placedBoat.MapPixel;
+                    newBoat.inside = placedBoat.inside;
 
                     ComeSailAway.Instance.AllBoats.Add(newBoat);
 
@@ -4999,8 +5903,19 @@ namespace ComeSailAwayMod
 
                     //add the cargo in there
                     newBoat.Cargo.Items.DeserializeItems(placedBoat.Items);
+                    newBoat.Cargo.ContainerImage = InventoryContainerImages.Merchant;
 
                     ComeSailAway.Instance.SetLights(newBoat, placedBoat.lights);
+                }
+            }
+
+            if (data.placedMapMarkers.Count > 0)
+            {
+                Debug.Log("COME SAIL AWAY - LOADED SAVE HAS MAP MARKERS!");
+                for (int i = 0; i < data.placedMapMarkers.Count; i++)
+                {
+                    ComeSailAway.Instance.AddMapMarker(new Vector2Int(Mathf.RoundToInt(data.placedMapMarkers[i].position.x), Mathf.RoundToInt(data.placedMapMarkers[i].position.y)), data.placedMapMarkers[i].color, data.placedMapMarkers[i].label);
+                    Debug.Log("COME SAIL AWAY - LOADED MAP MARKER AT " + data.placedMapMarkers[i].position.ToString());
                 }
             }
 

@@ -1,6 +1,6 @@
 {
     "ModTitle": "Trespasser",
-    "ModVersion": "1.2",
+    "ModVersion": "1.2.2",
     "ModAuthor": "RedRoryOTheGlen",
     "ContactInfo": "rmufrancisco@gmail.com",
     "DFUnity_Version": "1.1.1",
@@ -10,6 +10,7 @@
         "Assets/Game/Mods/LockpickingUnlimited/Scripts/LockpickingUnlimited.cs",
         "Assets/Game/Mods/LockpickingUnlimited/ItemTemplates.json",
         "Assets/Game/Mods/LockpickingUnlimited/Textures/112399_0-0.png",
-        "Assets/Game/Mods/LockpickingUnlimited/modsettings.json"
+        "Assets/Game/Mods/LockpickingUnlimited/modsettings.json",
+        "Assets/Game/Mods/LockpickingUnlimited/LockpickingUnlimited.dfmod.json"
     ]
 }

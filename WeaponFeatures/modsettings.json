@@ -79,6 +79,13 @@
                     "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
                 },
                 {
+                    "Value": false,
+                    "Name": "SuppressBash",
+                    "Description": "Prevents vanilla bash method from running for use with Trespasser",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
                     "Min": 0.0,
                     "Max": 2.0,
                     "Value": 0.5,

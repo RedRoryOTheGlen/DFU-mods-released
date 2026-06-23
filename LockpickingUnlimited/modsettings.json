@@ -143,6 +143,13 @@
                     "Description": null,
                     "$version": "v1",
                     "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
+                    "Value": false,
+                    "Name": "UseVanillaFormula",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
                 }
             ],
             "$version": "v1"
@@ -160,7 +167,7 @@
             "IsAdvanced": false,
             "Keys": [
                 {
-                    "Min": 1,
+                    "Min": 0,
                     "Max": 10,
                     "Value": 5,
                     "Name": "ConditionDamage",

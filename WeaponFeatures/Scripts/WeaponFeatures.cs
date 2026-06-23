@@ -59,6 +59,7 @@ public class WeaponFeatures : MonoBehaviour
     bool feedbackHurt;
     float feedbackHurtScale = 1;
     float weaponColliderDepth = 0.25f;
+    bool suppressBash = false;
 
     bool meleeHoldAndRelease = true;
 
@@ -757,8 +758,9 @@ public class WeaponFeatures : MonoBehaviour
         TextureReplacement.TryImportTexture(112390, 2, 0, out powerIconBarTexture);
         TextureReplacement.TryImportTexture(112390, 2, 1, out powerIconBarBaseTexture);
 
-        layerMask = ~(1 << LayerMask.NameToLayer("Player"));
-        layerMask = layerMask & ~(1 << LayerMask.NameToLayer("Ignore Raycast"));
+        layerMask = Physics.DefaultRaycastLayers;
+        layerMask &= ~(1 << LayerMask.NameToLayer("Player"));
+        layerMask &= ~(1 << LayerMask.NameToLayer("Automap"));
 
         skyCamera = GameManager.Instance.SkyRig.SkyCamera;
 
@@ -883,6 +885,7 @@ public class WeaponFeatures : MonoBehaviour
         {
             safeguard = settings.GetValue<bool>("HitDetection", "Safeguard");
             reachRadial = settings.GetValue<bool>("HitDetection", "RadialDistance");
+            suppressBash = settings.GetValue<bool>("HitDetection", "SuppressBash");
             weaponColliderDepth = settings.GetValue<float>("HitDetection", "ColliderDepth");
             reachMultiplier = settings.GetValue<float>("HitDetection", "ReachMultiplier");
             cleaveParries = settings.GetValue<bool>("HitDetection", "ParriesPreventCleave");
@@ -1556,9 +1559,15 @@ public class WeaponFeatures : MonoBehaviour
         if (meleeMode == 0 && meleeModeVanillaMouseDampenMod < 1)
         {
             if (ScreenWeapon.WeaponType != WeaponTypes.Bow && InputManager.Instance.GetKey(attackKeyCode))
+            {
                 GameManager.Instance.PlayerMouseLook.sensitivityScale = DaggerfallUnity.Settings.MouseLookSensitivity * meleeModeVanillaMouseDampenMod;
+                GameManager.Instance.PlayerMouseLook.joystickSensitivityScale = DaggerfallUnity.Settings.JoystickLookSensitivity * meleeModeVanillaMouseDampenMod;
+            }
             else
+            {
                 GameManager.Instance.PlayerMouseLook.sensitivityScale = DaggerfallUnity.Settings.MouseLookSensitivity;
+                GameManager.Instance.PlayerMouseLook.joystickSensitivityScale = DaggerfallUnity.Settings.JoystickLookSensitivity;
+            }
         }
 
         if (ScreenWeapon.IsAttacking())
@@ -1920,8 +1929,6 @@ public class WeaponFeatures : MonoBehaviour
         Vector3 dir = Quaternion.AngleAxis(-archeryMissileAngleTyped, GameManager.Instance.MainCameraObject.transform.right) * playerCamera.transform.forward;
         if (GameManager.Instance.PlayerMouseLook.cursorActive)
         {
-            /*Vector2 mousePosition = new Vector2(InputManager.Instance.MousePosition.x, InputManager.Instance.MousePosition.y);
-            Vector3 forward = GameManager.Instance.MainCamera.ScreenPointToRay(mousePosition).direction;*/
             Vector2 mousePosition = new Vector2((InputManager.Instance.MousePosition.x - screenRect.x) / screenRect.width, (InputManager.Instance.MousePosition.y - screenRect.y) / screenRect.height);
             if (DaggerfallUnity.Settings.LargeHUD)
                 mousePosition.y = (InputManager.Instance.MousePosition.y - screenRect.y - DaggerfallUI.Instance.DaggerfallHUD.LargeHUD.ScreenHeight) / screenRect.height;
@@ -1929,22 +1936,13 @@ public class WeaponFeatures : MonoBehaviour
             dir = (Quaternion.AngleAxis(-archeryMissileAngleTyped, GameManager.Instance.MainCameraObject.transform.right) * forward).normalized;
         }
         else
-        {
-            // Adjust slightly downward to match bow animation
-            Vector3 adjust = (GameManager.Instance.MainCamera.transform.rotation * -GameManager.Instance.PlayerObject.transform.up) * 0.11f;
-            // Offset forward to avoid collision with player
-            adjust += GameManager.Instance.MainCamera.transform.forward * 0.6f;
-            // Adjust to the right or left to match bow animation
-            if (!GameManager.Instance.WeaponManager.ScreenWeapon.FlipHorizontal)
-                adjust += GameManager.Instance.MainCamera.transform.right * 0.15f;
-            else
-                adjust -= GameManager.Instance.MainCamera.transform.right * 0.15f;
-            start += adjust;
-        }
+            start += GetArrowOffset();
 
         positions.Add(start);
 
-        Vector3 startStep = dir * archeryMissileSpeedTyped * Mathf.Clamp(drawTimer / archeryOverdrawTimeTyped, 0.5f, 2f);
+        Vector3 startStep = dir * archeryMissileSpeedTyped;
+        if (archeryOverdraw && DaggerfallUnity.Settings.BowDrawback)
+            startStep *= Mathf.Clamp(drawTimer / archeryOverdrawTimeTyped, 0.5f, 2f);
 
         //get all positions
         bool stopped = false;
@@ -1955,7 +1953,9 @@ public class WeaponFeatures : MonoBehaviour
         RaycastHit hit = new RaycastHit();
         while (!stopped && positions.Count < 200)
         {
-            startStep = dir * archeryMissileSpeedTyped * Mathf.Clamp(drawTimer / archeryOverdrawTimeTyped, 0.5f, 2f);
+            startStep = dir * archeryMissileSpeedTyped;
+            if (archeryOverdraw && DaggerfallUnity.Settings.BowDrawback)
+                startStep *= Mathf.Clamp(drawTimer / archeryOverdrawTimeTyped, 0.5f, 2f);
 
             currentGravity += Vector3.down * (9.8f * (archeryMissileGravityTyped * 0.01f));
             currentStep = (startStep * (Time.fixedDeltaTime * 1)) + (currentGravity * (Time.fixedDeltaTime * 1));
@@ -2100,10 +2100,9 @@ public class WeaponFeatures : MonoBehaviour
                 WeaponFeaturesMissile missileCustom = missile.gameObject.AddComponent<WeaponFeaturesMissile>();
                 missileCustom.modelID = (uint)archeryModelID;
                 missileCustom.dfMissile = missile;
+                missileCustom.MovementSpeed = archeryMissileSpeedTyped;
                 if (archeryOverdraw && DaggerfallUnity.Settings.BowDrawback)
-                    missileCustom.MovementSpeed = archeryMissileSpeedTyped * Mathf.Clamp(drawTimer/archeryOverdrawTimeTyped,0.5f,2f);
-                else
-                    missileCustom.MovementSpeed = archeryMissileSpeedTyped;
+                    missileCustom.MovementSpeed *= Mathf.Clamp(drawTimer/archeryOverdrawTimeTyped,0.5f,2f);
                 missileCustom.ColliderRadius = archeryMissileRadius;
                 missileCustom.gravityMod = archeryMissileGravityTyped * 0.01f;
                 missileCustom.EnableLight = false;
@@ -2127,16 +2126,7 @@ public class WeaponFeatures : MonoBehaviour
                 }
                 else
                 {
-                    // Adjust slightly downward to match bow animation
-                    Vector3 adjust = (GameManager.Instance.MainCamera.transform.rotation * -GameManager.Instance.PlayerObject.transform.up) * 0.11f;
-                    // Offset forward to avoid collision with player
-                    adjust += GameManager.Instance.MainCamera.transform.forward * 0.6f;
-                    // Adjust to the right or left to match bow animation
-                    if (!GameManager.Instance.WeaponManager.ScreenWeapon.FlipHorizontal)
-                        adjust += GameManager.Instance.MainCamera.transform.right * 0.15f;
-                    else
-                        adjust -= GameManager.Instance.MainCamera.transform.right * 0.15f;
-                    missileCustom.CustomAimPosition = GetEyePos + adjust;
+                    missileCustom.CustomAimPosition = GetEyePos + GetArrowOffset();
 
                     missileCustom.CustomAimDirection = (Quaternion.AngleAxis(-archeryMissileAngleTyped + (archeryMissileSpreadTyped * UnityEngine.Random.Range(-1f, 1f)), GameManager.Instance.MainCameraObject.transform.right) * playerCamera.transform.forward).normalized;
                 }
@@ -2147,8 +2137,10 @@ public class WeaponFeatures : MonoBehaviour
                 missile.ElementType = ElementTypes.None;
                 missile.IsArrow = true;
                 missile.IsArrowSummoned = isArrowSummoned;
-                missile.CustomAimPosition = GetEyePos;
-                missile.GetComponent<Rigidbody>().collisionDetectionMode = CollisionDetectionMode.Continuous;
+                missile.CustomAimPosition = GetEyePos + GetArrowOffset();
+                Rigidbody rigidbody = missile.GetComponent<Rigidbody>();
+                if (rigidbody != null)
+                    rigidbody.collisionDetectionMode = CollisionDetectionMode.Continuous;
             }
 
             ScreenWeapon.PlaySwingSound();
@@ -2169,6 +2161,23 @@ public class WeaponFeatures : MonoBehaviour
             if (OnMissileSpawn != null)
                 OnMissileSpawn(missile.gameObject, ScreenWeapon.SpecificWeapon, drawTime);
         }
+    }
+
+    public Vector3 GetArrowOffset()
+    {
+        // Adjust slightly downward to match bow animation
+        Vector3 offset = (GameManager.Instance.MainCamera.transform.rotation * -GameManager.Instance.PlayerObject.transform.up) * 0.11f;
+
+        // Offset forward to avoid collision with player
+        offset += GameManager.Instance.MainCamera.transform.forward * 0.6f;
+
+        // Adjust to the right or left to match bow animation
+        if (!GameManager.Instance.WeaponManager.ScreenWeapon.FlipHorizontal)
+            offset += GameManager.Instance.MainCamera.transform.right * 0.15f;
+        else
+            offset -= GameManager.Instance.MainCamera.transform.right * 0.15f;
+
+        return offset;
     }
 
     private void ModCompatibilityChecking()
@@ -2325,16 +2334,18 @@ public class WeaponFeatures : MonoBehaviour
 
         enemyMotor.enabled = false;
 
-        if (!mobile.IsPlayingOneShot())
+        bool oneshot = mobile.IsPlayingOneShot();
+        if (!oneshot)
         {
             mobile.ChangeEnemyState(MobileStates.PrimaryAttack);
-            yield return new WaitForEndOfFrame();
+            yield return new WaitForSeconds(0.1f);
             mobile.FreezeAnims = true;
         }
 
         float currentTime = 0;
         while (currentTime < time)
         {
+            mobile.FreezeAnims = true;
             controller.SimpleMove(direction.normalized * 10 * feedbackDodgeScale);
 
             currentTime += Time.deltaTime;
@@ -2342,7 +2353,7 @@ public class WeaponFeatures : MonoBehaviour
             yield return new WaitForEndOfFrame();
         }
 
-        if (mobile.IsPlayingOneShot())
+        if (!oneshot)
         {
             mobile.FreezeAnims = false;
             yield return new WaitForEndOfFrame();
@@ -2369,20 +2380,32 @@ public class WeaponFeatures : MonoBehaviour
 
             motor.enabled = false;
 
+            bool oneshot = mobile.IsPlayingOneShot();
+            if (!oneshot)
+            {
+                mobile.ChangeEnemyState(MobileStates.PrimaryAttack);
+                yield return new WaitForSeconds(0.1f);
+                mobile.FreezeAnims = true;
+            }
+
             float currentTime = 0;
             while (currentTime < time)
             {
                 if (mobile == null || mobile.IsPlayingOneShot())
                     break;
 
-                if (mobile.EnemyState == MobileStates.Move)
-                {
-                    mobile.ChangeEnemyState(MobileStates.Idle);
-                    target.EntityBehaviour.transform.position = pos;
-                }
+                mobile.FreezeAnims = true;
+                target.EntityBehaviour.transform.position = pos;
 
                 currentTime += Time.deltaTime;
                 yield return new WaitForEndOfFrame();
+            }
+
+            if (!oneshot)
+            {
+                mobile.FreezeAnims = false;
+                yield return new WaitForEndOfFrame();
+                mobile.ChangeEnemyState(MobileStates.Idle);
             }
 
             motor.enabled = true;
@@ -2603,6 +2626,7 @@ public class WeaponFeatures : MonoBehaviour
         //create variables
         Transform body = GameManager.Instance.PlayerObject.transform;
         Transform eye = playerCamera.transform;
+        Vector3 eyeOrigin = GetEyePos + (eye.forward * playerController.radius);
 
         //weapon determines base cleave
         int weaponCleave = GetWeaponCleave();
@@ -2623,9 +2647,9 @@ public class WeaponFeatures : MonoBehaviour
         float weaponReach = GetWeaponReach();
 
         //construct the bounds
-        float x = weaponReach;
+        float x = weaponReach * 2;
         float y = weaponColliderDepth;
-        float z = weaponReach * 0.5f;
+        float z = weaponReach;
 
         //if thrusting, increase the weapon reach but halve the cleave value
         if (swingDirection == WeaponStates.StrikeUp)
@@ -2635,11 +2659,11 @@ public class WeaponFeatures : MonoBehaviour
             cleaveValue = Mathf.RoundToInt(cleaveValue * 0.5f);
             x = weaponColliderDepth;
             y = weaponColliderDepth;
-            z = weaponReach * 0.5f;
+            z = weaponReach;
         }
 
         Vector3 scale = new Vector3(x, y, z);
-        Vector3 pos = GetEyePos + (eye.forward * ((z * 0.5f) + playerController.radius));
+        Vector3 pos = eyeOrigin + (eye.forward * (z * 0.5f));
         Quaternion rot = eye.rotation;
 
         int angle = 0;
@@ -2667,23 +2691,18 @@ public class WeaponFeatures : MonoBehaviour
         //get entities inside box, exclude original target, if any
         if (colliders.Length > 0)
         {
-            Vector3 eyeOrigin = GetEyePos + (eye.forward * playerController.radius);
             foreach (Collider collider in colliders)
             {
 
                 DaggerfallEntityBehaviour behaviour = collider.GetComponent<DaggerfallEntityBehaviour>();
-                EnemyMotor motor = collider.GetComponent<EnemyMotor>();
-                MobilePersonNPC mobileNpc = collider.GetComponent<MobilePersonNPC>();
-                if ((behaviour != null && behaviour.Entity != attackTarget) || mobileNpc != null)
+                if (behaviour != null)
                 {
                     if (safeguard)
                     {
-                        if ((behaviour != null && behaviour.Entity.Team == MobileTeams.PlayerAlly) || (motor != null && !motor.IsHostile) || mobileNpc != null)
-                        {
-                            float angleDistance = Vector3.Angle(eye.forward, collider.transform.position - eye.transform.position);
-                            if (angleDistance > GameManager.Instance.MainCamera.fieldOfView * 0.25f)
-                                continue;
-                        }
+                        EnemyMotor motor = collider.GetComponent<EnemyMotor>();
+                        MobilePersonNPC mobileNpc = collider.GetComponent<MobilePersonNPC>();
+                        if (behaviour.Entity.Team == MobileTeams.PlayerAlly || mobileNpc != null || (motor != null && !motor.IsHostile))
+                            continue;
                     }
 
                     //add a radial check
@@ -2695,46 +2714,114 @@ public class WeaponFeatures : MonoBehaviour
             }
         }
 
-        // Fire ray along player facing using weapon range
-        RaycastHit hit;
-        Ray ray = new Ray(GetEyePos, eye.forward);
-        if (Physics.SphereCast(ray, 0.25f, out hit, weaponReach, layerMask))
+        if (transforms.Count > 0)
         {
-            if (weaponManager.WeaponEnvDamage(ScreenWeapon.SpecificWeapon, hit))
-            {
 
-            }
+            Vector3 origin = eyeOrigin;
+            if (swingDirection == WeaponStates.StrikeDown)
+                origin += eye.up * (x * 0.5f);
+            if (swingDirection == WeaponStates.StrikeLeft)
+                origin += eye.right * (x * 0.5f);
+            if (swingDirection == WeaponStates.StrikeDownLeft)
+                origin += (eye.forward * playerController.radius) + ((eye.right + eye.up).normalized * (x * 0.5f));
+            if (swingDirection == WeaponStates.StrikeRight)
+                origin -= eye.right * (x * 0.5f);
+            if (swingDirection == WeaponStates.StrikeDownRight)
+                origin += (-eye.right + eye.up).normalized * (x * 0.5f);
+
+            //Debug.DrawLine(GetEyePos + (eye.forward * playerController.radius), origin, Color.green, 3);
+
+            //sort entities by their distance to the swing origin
+            transforms = SortByDistanceToPoint(transforms, origin);
+
+            if (cleaving != null)
+                StopCoroutine(cleaving);
+            cleaving = ApplyCleaveInterval(transforms, cleaveValue, z, GameManager.classicUpdateInterval * cleaveInterval);
+            StartCoroutine(cleaving);
         }
-
-        if (transforms.Count < 1)
+        else
         {
+            // If no colliders were overlapped, do vanilla spherecast for bashing or hitting safeguarded targets
+            RaycastHit hit;
+            Ray ray = new Ray(GetEyePos, eye.forward);
+            if (Physics.SphereCast(ray, 0.25f, out hit, weaponReach, layerMask))
+            {
+                if (!CustomWeaponEnvDamage(ScreenWeapon.SpecificWeapon, hit) || Physics.Raycast(ray, out hit, weaponReach, layerMask))
+                    weaponManager.WeaponDamage(ScreenWeapon.SpecificWeapon, false, false, hit.transform, hit.point, eye.forward);
+            }
             return;
         }
 
-        Vector3 origin = GetEyePos;
-        if (swingDirection == WeaponStates.StrikeDown)
-            origin += (eye.forward * playerController.radius) + (eye.up * (x * 0.5f));
-        if (swingDirection == WeaponStates.StrikeLeft)
-            origin += (eye.forward * playerController.radius) + (eye.right * (x * 0.5f));
-        if (swingDirection == WeaponStates.StrikeDownLeft)
-            origin += (eye.forward * playerController.radius) + ((eye.right + eye.up).normalized * (x * 0.5f));
-        if (swingDirection == WeaponStates.StrikeRight)
-            origin += (eye.forward * playerController.radius) - (eye.right * (x * 0.5f));
-        if (swingDirection == WeaponStates.StrikeDownRight)
-            origin += (eye.forward * playerController.radius) + ((-eye.right + eye.up).normalized * (x * 0.5f));
-
-        //Debug.DrawLine(GetEyePos + (eye.forward * playerController.radius), origin, Color.green, 3);
-
-        //sort entities by their distance to the swing origin
-        transforms = SortByDistanceToPoint(transforms, origin);
-
-        if (cleaving != null)
-            StopCoroutine(cleaving);
-        cleaving = ApplyCleaveInterval(transforms, cleaveValue, z, GameManager.classicUpdateInterval * cleaveInterval);
-        StartCoroutine(cleaving);
-
         attackTarget = null;
         attackDamage = 0;
+    }
+
+    public bool CustomWeaponEnvDamage(DaggerfallUnityItem strikingWeapon, RaycastHit hit)
+    {
+        // Check if hit has an DaggerfallAction component
+        DaggerfallAction action = hit.transform.gameObject.GetComponent<DaggerfallAction>();
+        if (action)
+        {
+            action.Receive(GameManager.Instance.PlayerObject, DaggerfallAction.TriggerTypes.Attack);
+        }
+
+        // Check if hit has an DaggerfallActionDoor component
+        DaggerfallActionDoor actionDoor = hit.transform.gameObject.GetComponent<DaggerfallActionDoor>();
+        if (!suppressBash)
+        {
+            if (actionDoor)
+            {
+                actionDoor.AttemptBash(true);
+                return true;
+            }
+
+            // Check if player hit a static door
+            if (GameManager.Instance.PlayerActivate.AttemptExteriorDoorBash(hit))
+            {
+                return true;
+            }
+        }
+        else
+        {
+            //play bashing sounds
+            if (actionDoor)
+            {
+                // Play bash sound if flagged and ready
+                if (actionDoor.PlaySounds && actionDoor.BashSound > 0)
+                {
+                    DaggerfallAudioSource dfAudioSource = actionDoor.GetComponent<DaggerfallAudioSource>();
+                    if (dfAudioSource != null)
+                        dfAudioSource.PlayOneShot(actionDoor.BashSound);
+                }
+                return true;
+            }
+
+            if (HitStaticBuildingDoor(hit))
+            {
+                // Play bash sound if flagged and ready
+                GameManager.Instance.PlayerObject.GetComponent<DaggerfallAudioSource>().PlayClipAtPoint(SoundClips.PlayerDoorBash, hit.point, 1);
+                return true;
+            }
+        }
+
+        // Make hitting walls do a thud or clinging sound (not in classic)
+        if (GameObjectHelper.IsStaticGeometry(hit.transform.gameObject) && !actionDoor)
+        {
+            DaggerfallUI.Instance.PlayOneShot(strikingWeapon == null ? SoundClips.Hit2 : SoundClips.Parry6);
+            return true;
+        }
+
+        return false;
+    }
+
+    bool HitStaticBuildingDoor(RaycastHit hit)
+    {
+        var doors = GameManager.Instance.PlayerActivate.GetDoors(hit.transform, out Transform doorOwner);
+
+        if (!doors || !doors.HasHit(hit.point, out var door) || !GameManager.Instance.PlayerEnterExit)
+            return false;
+
+        return true;
     }
 
     IEnumerator ApplyCleaveInterval(List<Transform> targets, int cleaveValue, float reach, float interval = GameManager.classicUpdateInterval)
@@ -2755,26 +2842,29 @@ public class WeaponFeatures : MonoBehaviour
             if (mobileNpc == null)
             {
                 //check if target is still within reach
+                Collider collider = target.GetComponent<Collider>();
                 Vector3 eyeOrigin = GetEyePos + (playerCamera.transform.forward * playerController.radius);
-                if (Vector2.Distance(eyeOrigin, target.GetComponent<Collider>().ClosestPoint(eyeOrigin)) > reach)
-                    continue;
+
+                /*if (Vector2.Distance(eyeOrigin, collider.ClosestPoint(eyeOrigin)) > reach)
+                    continue;*/
 
                 if (cleaveRequireLOS)
                 {
                     //check if LOS is obstructed
-                    Vector3 rayPos = GetEyePos;
-                    Vector3 rayDir = target.position - rayPos;
+                    Vector3 rayPos = eyeOrigin;
+                    Vector3 rayDir = collider.bounds.center - rayPos;
                     Ray ray = new Ray(rayPos, rayDir);
                     RaycastHit hit = new RaycastHit();
-                    if (Physics.Raycast(ray, out hit, 10, layerMask, QueryTriggerInteraction.Ignore))
+                    if (Physics.Raycast(ray, out hit, reach, layerMask, QueryTriggerInteraction.Ignore))
                     {
-                        if (hit.collider.transform != target)
+                        if (hit.collider != collider)
                         {
                             //Target is obstructed by something
                             continue;
                         }
                         else
                         {
+                            //Target is unobstructed and within reach
                             cleaves++;
                             DaggerfallEntityBehaviour behaviour = target.GetComponent<DaggerfallEntityBehaviour>();
                             if (weaponManager.WeaponDamage(ScreenWeapon.SpecificWeapon, false, false, hit.transform, hit.point, ray.direction))
@@ -2791,6 +2881,11 @@ public class WeaponFeatures : MonoBehaviour
                                 }
                             }
                         }
+                    }
+                    else
+                    {
+                        //target out of reach
+                        continue;
                     }
                 }
                 else
@@ -2812,8 +2907,9 @@ public class WeaponFeatures : MonoBehaviour
                     }
                 }
             }
-            else
+            else if (!safeguard)
             {
+                //Only kill MobileNPCs through cleave if safeguard is disabled
                 //Don't LOS check MobileNPCs
                 weaponManager.WeaponDamage(ScreenWeapon.SpecificWeapon, false, false, target, target.position, target.position - playerController.transform.position);
                 SoundClips soundClip = DaggerfallEntity.GetRaceGenderPainSound(mobileNpc.Race, mobileNpc.Gender, false);
@@ -3221,7 +3317,9 @@ public class WeaponFeatures : MonoBehaviour
                 else
                 {
                     missile.CustomAimPosition = GetEyePos;
-                    missile.GetComponent<Rigidbody>().collisionDetectionMode = CollisionDetectionMode.Continuous;
+                    Rigidbody rigidbody = missile.GetComponent<Rigidbody>();
+                    if (rigidbody != null)
+                        rigidbody.collisionDetectionMode = CollisionDetectionMode.Continuous;
                 }
                 if (OnSpellSpawn != null)
                     OnSpellSpawn(missile.gameObject, spell);

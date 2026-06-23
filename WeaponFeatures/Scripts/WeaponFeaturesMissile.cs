@@ -27,7 +27,6 @@ using DaggerfallWorkshop.Game.Entity;
 /// Currently ranged missiles can only move in a straight line as per classic.
 /// </summary>
 [RequireComponent(typeof(Light))]
-[RequireComponent(typeof(Rigidbody))]
 [RequireComponent(typeof(DaggerfallAudioSource))]
 public class WeaponFeaturesMissile : MonoBehaviour
 {
@@ -194,7 +193,8 @@ public class WeaponFeaturesMissile : MonoBehaviour
 
         // Setup collider
         myCollider = GetComponent<SphereCollider>();
-        myCollider.radius = ColliderRadius;
+        if (myCollider)
+            myCollider.radius = ColliderRadius;
 
         // Use payload when available
         if (payload != null)
@@ -311,7 +311,7 @@ public class WeaponFeaturesMissile : MonoBehaviour
 
         if (gravityMod > 0)
         {
-            gravityCurrent += gravity * gravityMod * Time.fixedDeltaTime;
+            gravityCurrent += (gravity * gravityMod) * Time.fixedDeltaTime;
             step += Vector3.down * gravityCurrent;
         }
 

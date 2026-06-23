@@ -1,0 +1,14 @@
+{
+    "ModTitle": "Jak-Be-Nimbel",
+    "ModVersion": "1.0.1",
+    "ModAuthor": "RedRoryOTheGlen",
+    "ContactInfo": "rmufrancisco@gmail.com",
+    "DFUnity_Version": "1.1.1",
+    "ModDescription": "Implements Battlespire-style jumping and other mechanics",
+    "GUID": "739204dc-8689-4f24-a862-32d093312704",
+    "Files": [
+        "Assets/Game/Mods/Jumpmaster/Scripts/Jumpmaster.cs",
+        "Assets/Game/Mods/Jumpmaster/modsettings.json",
+        "Assets/Game/Mods/Jumpmaster/Jumpmaster.dfmod.json"
+    ]
+}
