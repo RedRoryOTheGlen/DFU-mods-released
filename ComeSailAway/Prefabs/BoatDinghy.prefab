@@ -1171,7 +1171,7 @@ GameObject:
   - component: {fileID: 7461041607695203852}
   - component: {fileID: 3764349439417080115}
   m_Layer: 0
-  m_Name: Dingy
+  m_Name: DingyHull
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

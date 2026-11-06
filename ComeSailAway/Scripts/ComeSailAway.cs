@@ -794,6 +794,10 @@ namespace ComeSailAwayMod
             ConsoleCommandsDatabase.RegisterCommand(IdentifyBoat.name, IdentifyBoat.description, IdentifyBoat.usage, IdentifyBoat.Execute);
             ConsoleCommandsDatabase.RegisterCommand(PurgeBoat.name, PurgeBoat.description, PurgeBoat.usage, PurgeBoat.Execute);
 
+            //register custom spell effect
+            WaterWalkingSilent waterWalkingSilentTemplateEffect = new WaterWalkingSilent();
+            GameManager.Instance.EntityEffectBroker.RegisterEffectTemplate(waterWalkingSilentTemplateEffect,true);
+
             mod.LoadSettingsCallback = LoadSettings;
             mod.LoadSettings();
 
@@ -1481,6 +1485,14 @@ namespace ComeSailAwayMod
                     callBack?.Invoke("GetBoatMeshObject", CurrentBoat.MeshObject);
                     break;
 
+                case "GetAllBoatGameObjects":
+                    callBack?.Invoke("GetAllBoatGameObjects", GetAllBoatGameObject());
+                    break;
+
+                case "GetBoatIndexFromGameObject":
+                    callBack?.Invoke("GetBoatIndexFromGameObject", GetBoatIndexFromGameObject(data as GameObject));
+                    break;
+
                 default:
                     Debug.LogErrorFormat("{0}: unknown message received ({1}).", this, message);
                     break;
@@ -1621,6 +1633,33 @@ namespace ComeSailAwayMod
                 Destroy(boat.GameObject);
                 return "Boat at index " + index.ToString() + " was purged.";
             }
+        }
+
+        public static List<GameObject> GetAllBoatGameObject()
+        {
+            List<GameObject> result = new List<GameObject>();
+
+            for (int i = 0; i < Instance.AllBoats.Count; i++)
+            {
+                result.Add(Instance.AllBoats[i].GameObject);
+            }
+
+            return result;
+        }
+        public static int GetBoatIndexFromGameObject(GameObject boatObject)
+        {
+            int index = -1;
+
+            for (int i = 0; i < Instance.AllBoats.Count; i++)
+            {
+                if (boatObject.GetInstanceID() == Instance.AllBoats[i].GameObject.GetInstanceID())
+                {
+                    index = i;
+                    break;
+                }
+            }
+
+            return index;
         }
 
         public static int GetHitBoatIndex(RaycastHit hit)

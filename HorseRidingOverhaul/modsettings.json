@@ -516,7 +516,10 @@
             "Keys": [
                 {
                     "Options": [
+                        "Vanilla",
                         "Horse",
+                        "Draft Horse",
+                        "Pony",
                         "Camel"
                     ],
                     "Value": 0,
@@ -527,7 +530,7 @@
                 },
                 {
                     "Min": 0,
-                    "Max": 4,
+                    "Max": 30,
                     "Value": 0,
                     "Name": "Variant",
                     "Description": null,

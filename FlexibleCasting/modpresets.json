@@ -1,0 +1,35 @@
+[
+    {
+        "Title": "Classic",
+        "Author": "RedRoryOTheGlen",
+        "Description": "Vanilla-style scheme while still benefiting from the new controls",
+        "SettingsVersion": null,
+        "Values": {
+            "Main": {
+                "RecastReadySpellBehaviour": "0",
+                "SelectSpellBehaviour": "0",
+                "BlockInstantCastSpells": "False",
+                "BlockNoAnimSpells": "False",
+                "ActivateInputBehaviour": "0",
+                "AttackToCast": "False"
+            }
+        },
+        "$version": "v1"
+    },
+    {
+        "Title": "Modern",
+        "Author": "RedRoryOTheGlen",
+        "Description": "Scheme similar to later TES games",
+        "SettingsVersion": null,
+        "Values": {
+            "Main": {
+                "RecastReadySpellBehaviour": "1",
+                "SelectSpellBehaviour": "1",
+                "BlockInstantCastSpells": "True",
+                "BlockNoAnimSpells": "True",
+                "ActivateInputBehaviour": "2"
+            }
+        },
+        "$version": "v1"
+    }
+]

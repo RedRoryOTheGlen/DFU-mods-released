@@ -554,7 +554,9 @@ namespace FastTravelEncounters
             doEncounter = CheckEncounter();
 
             if (doEncounter)
+            {
                 InterruptTravel();
+            }
         }
 
         void DaggerfallTravelPopUp_OnPostFastTravel()
@@ -891,6 +893,9 @@ namespace FastTravelEncounters
 
         void InterruptTravel()
         {
+            if (WarmAshesWilderness != null)
+                ModManager.Instance.SendModMessage(WarmAshesWilderness.Title, "suppressDungeonExteriorEncounter");
+
             DFPosition startPos = TravelTimeCalculator.GetPlayerTravelPosition();
             DFPosition endPos = travelPopUp.EndPos;
 
@@ -1073,7 +1078,9 @@ namespace FastTravelEncounters
             DFPosition pos = GameManager.Instance.PlayerGPS.CurrentMapPixel;
             TransportManager transportManager = GameManager.Instance.TransportManager;
 
-            bool atSea = GameManager.Instance.PlayerGPS.CurrentPoliticIndex == 64 ? true : false;
+            //bool atSea = GameManager.Instance.PlayerGPS.CurrentPoliticIndex == 64 ? true : false;
+            bool atSea = DaggerfallUnity.Instance.ContentReader.MapFileReader.GetClimateIndex(pos.X, pos.Y) == (int)MapsFile.Climates.Ocean ? true : false;
+
             bool isRoad = BasicRoads != null ? BasicRoadsUtils.IsRoad(pos.X, pos.Y) : false;
             bool inHouse = false;
             bool isNight = time.Hour < 8 || time.Hour > 16 ? true : false;
@@ -1564,6 +1571,11 @@ namespace FastTravelEncounters
                 RealisticWagonGameObject.SetActive(true);
 
             RescueHorseAndCart();
+
+            yield return new WaitForSeconds(0.1f);
+
+            if (WarmAshesWilderness != null)
+                ModManager.Instance.SendModMessage(WarmAshesWilderness.Title, "allowDungeonExteriorEncounter");
 
             canResume = true;
         }

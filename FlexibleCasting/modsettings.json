@@ -1,0 +1,181 @@
+{
+    "Version": null,
+    "Sections": [
+        {
+            "Name": "Main",
+            "Description": null,
+            "IsAdvanced": false,
+            "Keys": [
+                {
+                    "Value": "Q",
+                    "Name": "CastSpellInput",
+                    "Description": "Input to cast readied spells and recast last spell",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.TextKey"
+                },
+                {
+                    "Value": "Tab",
+                    "Name": "OpenSpellbookInput",
+                    "Description": "Input to choose a spell and abort readied spells",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.TextKey"
+                },
+                {
+                    "Value": false,
+                    "Name": "AttackToCast",
+                    "Description": "Cast readied spells by using the SwingWeapon action",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
+                    "Options": [
+                        "Ready Only (Vanilla)",
+                        "Cast On Press",
+                        "Cast On Release"
+                    ],
+                    "Value": 1,
+                    "Name": "RecastReadySpellBehaviour",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.MultipleChoiceKey"
+                },
+                {
+                    "Options": [
+                        "Ready (Vanilla)",
+                        "Set Last Spell",
+                        "Ready And Set Last Spell"
+                    ],
+                    "Value": 1,
+                    "Name": "SelectSpellBehaviour",
+                    "Description": "Requires non-vanilla Recast Spell Behavior setting",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.MultipleChoiceKey"
+                },
+                {
+                    "Value": true,
+                    "Name": "BlockInstantCastSpells",
+                    "Description": "Prevents \"Instant Cast\" spells from firing when selected",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
+                    "Value": true,
+                    "Name": "BlockNoAnimSpells",
+                    "Description": "Prevents \"No Anim\" spells from firing when selected",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
+                    "Options": [
+                        "Cast Ready Spell (Vanilla)",
+                        "Abort Ready Spell",
+                        "None"
+                    ],
+                    "Value": 2,
+                    "Name": "ActivateInputBehaviour",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.MultipleChoiceKey"
+                }
+            ],
+            "$version": "v1"
+        },
+        {
+            "Name": "LastSpellIndicator",
+            "Description": null,
+            "IsAdvanced": false,
+            "Keys": [
+                {
+                    "Value": true,
+                    "Name": "Enable",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
+                    "Value": {
+                        "First": 0.125,
+                        "Second": 0.9
+                    },
+                    "Name": "IconPosition",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.TupleFloatKey"
+                },
+                {
+                    "Min": 0,
+                    "Max": 300,
+                    "Value": 100,
+                    "Name": "IconScale",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.SliderIntKey"
+                },
+                {
+                    "Value": true,
+                    "Name": "ShowSpellTargetType",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
+                    "Value": true,
+                    "Name": "ShowSpellElement",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
+                    "Options": [
+                        "Horizontal",
+                        "Vertical"
+                    ],
+                    "Value": 0,
+                    "Name": "IconLayout",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.MultipleChoiceKey"
+                },
+                {
+                    "Value": true,
+                    "Name": "ShowSpellNameLabel",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
+                    "Value": {
+                        "First": 0.0,
+                        "Second": -0.05
+                    },
+                    "Name": "LabelOffset",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.TupleFloatKey"
+                },
+                {
+                    "Min": 0,
+                    "Max": 300,
+                    "Value": 100,
+                    "Name": "LabelScale",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.SliderIntKey"
+                },
+                {
+                    "Options": [
+                        "Do Not Scale",
+                        "Scale To Height",
+                        "Scale To Screen"
+                    ],
+                    "Value": 1,
+                    "Name": "ScalingMode",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.MultipleChoiceKey"
+                }
+            ],
+            "$version": "v1"
+        }
+    ]
+}

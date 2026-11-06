@@ -5,6 +5,7 @@ using UnityEngine;
 using DaggerfallWorkshop;
 using DaggerfallWorkshop.Utility;
 using DaggerfallWorkshop.Game;
+using DaggerfallWorkshop.Game.Formulas;
 using DaggerfallWorkshop.Game.Entity;
 using DaggerfallWorkshop.Game.UserInterfaceWindows;
 using DaggerfallWorkshop.Game.Serialization;
@@ -98,6 +99,9 @@ namespace JumpmasterMod
             DaggerfallTravelPopUp.OnPreFastTravel += OnPreFastTravel;
             SaveLoadManager.OnLoad += OnLoad;
             FloatingOrigin.OnPositionUpdate += OnPositionUpdate;
+
+            //testing override
+            //FormulaHelper.RegisterOverride(mod, "CalculateFallDamage", (Func<DaggerfallEntity, float, float, int>)CalculateFallDamage);
         }
 
         private void ModCompatibilityChecking()
@@ -194,6 +198,12 @@ namespace JumpmasterMod
                         StartJump(jumpHoldTime);
                     else
                         CancelJump();
+                }
+                else if (!InputManager.Instance.GetKey(jumpKeyCode))
+                {
+                    //cancel jump if key isn't pressed
+                    jumpPressed = false;
+                    CancelJump();
                 }
             }
 
@@ -351,7 +361,7 @@ namespace JumpmasterMod
                 motor.IsSwimming ||
                 motor.OnExteriorWater == PlayerMotor.OnExteriorWaterMethod.Swimming ||
                 GameManager.Instance.TransportManager.TransportMode == TransportModes.Cart ||
-                //(motor.IsClimbing && CheckCeiling()) ||
+                entity.IsParalyzed ||
                 isSailing
                 )
                 return false;
@@ -501,6 +511,7 @@ namespace JumpmasterMod
             float verticalTarget = 0;*/
 
             float halfPositions = (float)positions.Count / 2f;
+            int breakout = 0;
             for (int i = 0; i < positions.Count; i++)
             {
                 //player started frame inside dungeon water
@@ -520,11 +531,15 @@ namespace JumpmasterMod
                 {
                     //if obstructed, lerp player from current position to hit position
                     Vector3 hitPosition = currentPosition + (dir.normalized * hit.distance);
-                    while (body.transform.position != hitPosition)
+                    breakout = 0;
+                    while (body.transform.position != hitPosition && breakout < 30)
                     {
+                        if (GameManager.Instance.PlayerEnterExit.blockWaterLevel != 10000 && body.transform.position.y < (float)GameManager.Instance.PlayerEnterExit.blockWaterLevel * -1 * MeshReader.GlobalScale)
+                            break;
                         motor.FreezeMotor = 1;
                         body.transform.position = Vector3.MoveTowards(body.transform.position, hitPosition, jumpSpeed * Time.deltaTime);
-                        //body.transform.position = Vector3.MoveTowards(body.transform.position, hitPosition, jumpSpeed * (1+Mathf.Abs(dir.y)) * Time.deltaTime);
+                        Debug.Log("JUMPMASTER - LERPING FROM CURRENT POSITION TO HIT POSITION");
+                        breakout++;
                         yield return new WaitForEndOfFrame();
                     }
                     break;
@@ -545,36 +560,20 @@ namespace JumpmasterMod
                 else
                 {
                     //if unobstructed, lerp player from current position to next position
-                    while (body.transform.position != positions[i])
+                    breakout = 0;
+                    while (body.transform.position != positions[i] && breakout < 30)
                     {
+                        if (GameManager.Instance.PlayerEnterExit.blockWaterLevel != 10000 && body.transform.position.y < (float)GameManager.Instance.PlayerEnterExit.blockWaterLevel * -1 * MeshReader.GlobalScale)
+                            break;
                         motor.FreezeMotor = 1;
                         body.transform.position = Vector3.MoveTowards(body.transform.position, positions[i], jumpSpeed * Time.deltaTime);
-                        //body.transform.position = Vector3.MoveTowards(body.transform.position, positions[i], jumpSpeed * (1 + Mathf.Abs(dir.y)) * Time.deltaTime);
+                        Debug.Log("JUMPMASTER - LERPING FROM CURRENT POSITION TO NEXT POSITION");
+                        breakout++;
                         yield return new WaitForEndOfFrame();
                     }
-
-                    /*horizontalTarget = new Vector2(positions[i].x, positions[i].z);
-                    verticalTarget = positions[i].y;
-                    float time = dir.magnitude / jumpSpeed;
-                    float timer = 0;
-                    while (timer < time)
-                    {
-                        motor.FreezeMotor = 1;
-
-                        //body.transform.position = Vector3.MoveTowards(body.transform.position, positions[i], jumpSpeed * Time.deltaTime);
-
-                        //slow down the vertical speed when nearing the apex of the trajectory then speed up as it passes
-                        horizontal = Vector2.Lerp(horizontal, horizontalTarget, timer/time);
-                        vertical = Mathf.Lerp(vertical, verticalTarget, timer/time);
-                        body.transform.position = new Vector3(horizontal.x, vertical, horizontal.y);
-                        timer += Time.deltaTime;
-
-                        yield return new WaitForEndOfFrame();
-                    }*/
                 }
 
                 currentPosition = positions[i];
-                //yield return new WaitForEndOfFrame();
             }
 
             //after jump ends, perform unarmed attack in leap direction
@@ -598,9 +597,11 @@ namespace JumpmasterMod
             bool ground = CheckGround();
 
             //handle landing
-            if (GameManager.Instance.PlayerEnterExit.blockWaterLevel != 10000 && body.transform.position.y < (float)GameManager.Instance.PlayerEnterExit.blockWaterLevel * -1 * MeshReader.GlobalScale)
+            if (GameManager.Instance.PlayerEnterExit.IsPlayerInsideDungeon && GameManager.Instance.PlayerEnterExit.blockWaterLevel != 10000 && body.transform.position.y < (float)GameManager.Instance.PlayerEnterExit.blockWaterLevel * -1 * MeshReader.GlobalScale)
             {
                 //landed in dungeon water
+                motor.GetComponent<PlayerFootsteps>().PlayLargeSplash();
+                Debug.Log("JUMPMASTER - LANDED IN DUNGEON WATER");
             }
             else if (GameManager.Instance.StreamingWorld.PlayerTileMapIndex == 0)
             {
@@ -636,9 +637,9 @@ namespace JumpmasterMod
                 }
 
                 if (fallDistance > motorAcrobat.fallingDamageThreshold)
-                    body.SendMessage("ApplyPlayerFallDamage", fallDistance - (motorAcrobat.fallingDamageThreshold) + 5, SendMessageOptions.DontRequireReceiver);
+                    body.SendMessage("ApplyPlayerFallDamage", fallDistance, SendMessageOptions.DontRequireReceiver);
                 else
-                    body.SendMessage("HardFallAlert", fallDistance - (motorAcrobat.fallingDamageThreshold) + 5, SendMessageOptions.DontRequireReceiver);
+                    body.SendMessage("HardFallAlert", fallDistance, SendMessageOptions.DontRequireReceiver);
 
                 if (roll && doARoll && ground)
                 {
@@ -905,6 +906,20 @@ namespace JumpmasterMod
                     dfAudioSource.PlayOneShot(customSound, 0, 1f);
                 }
             }
+        }
+
+        public static int CalculateFallDamage(DaggerfallEntity entity, float threshold, float distance)
+        {
+            Debug.Log("JUMPMASTER - CALCULATE FALL DAMAGE OVERRIDE STARTED!");
+
+            float HPPerMetre = 5;
+
+            if (entity is PlayerEntity)
+                Debug.Log("JUMPMASTER - PLAYER IS CALCULATING FALL DAMAGE!");
+
+            int damage = (int)(HPPerMetre * (distance - threshold));
+
+            return damage;
         }
 
         private KeyCode SetKeyFromText(string text)

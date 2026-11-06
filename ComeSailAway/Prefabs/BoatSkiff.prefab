@@ -5923,7 +5923,7 @@ GameObject:
   - component: {fileID: 6273285450639592650}
   - component: {fileID: 1228585739863237194}
   m_Layer: 0
-  m_Name: OldSkiffHullWaterCull
+  m_Name: OldSkiffWaterCull
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

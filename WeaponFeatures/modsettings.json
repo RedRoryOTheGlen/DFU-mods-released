@@ -67,7 +67,7 @@
                 {
                     "Value": false,
                     "Name": "ParriesPreventCleave",
-                    "Description": "An enemy that parries the attack stops a cleave from propagating",
+                    "Description": null,
                     "$version": "v1",
                     "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
                 },
@@ -510,6 +510,74 @@
                     "Value": true,
                     "Name": "PowerAttackScaling",
                     "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                }
+            ],
+            "$version": "v1"
+        },
+        {
+            "Name": "DualWielding",
+            "Description": null,
+            "IsAdvanced": false,
+            "Keys": [
+                {
+                    "Value": false,
+                    "Name": "Dirty",
+                    "Description": "Use to update Weapon Widget setting without other changes",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
+                    "Value": true,
+                    "Name": "Enable",
+                    "Description": null,
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
+                },
+                {
+                    "Min": 0,
+                    "Max": 4,
+                    "Value": 2,
+                    "Name": "OffhandAttackDelay",
+                    "Description": "Amount of ticks before the offhand attack starts",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.SliderIntKey"
+                },
+                {
+                    "Min": 0,
+                    "Max": 100,
+                    "Value": 80,
+                    "Name": "OffhandReachEffectiveness",
+                    "Description": "Percentage of base reach applied to offhand attack",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.SliderIntKey"
+                },
+                {
+                    "Min": 0,
+                    "Max": 100,
+                    "Value": 60,
+                    "Name": "OffhandCleaveStrength",
+                    "Description": "Percentage of base cleave applied to offhand attack",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.SliderIntKey"
+                },
+                {
+                    "Options": [
+                        "Same as Main",
+                        "Reverse of Main",
+                        "Random"
+                    ],
+                    "Value": 0,
+                    "Name": "OffhandSwingDirection",
+                    "Description": "",
+                    "$version": "v1",
+                    "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.MultipleChoiceKey"
+                },
+                {
+                    "Value": false,
+                    "Name": "NoUnarmedStrikeLeft",
+                    "Description": "Prevents the side-kick from being performed when dual-wielding unarmed",
                     "$version": "v1",
                     "$type": "DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings.ToggleKey"
                 }

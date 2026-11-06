@@ -170,6 +170,22 @@ public class FPSWeaponClone : MonoBehaviour
     Mod tomeOfBattle;
     float tomeOfBattleWeaponReach = 2.25f;
     KeyCode tomeOfBattleSwingKeyCode = KeyCode.None;
+    bool CanAttackTOB
+    {
+        get
+        {
+            bool canAttack = true;
+            if (tomeOfBattle != null)
+            {
+                ModManager.Instance.SendModMessage(tomeOfBattle.Title, "getCanAttack", null, (string message, object data) =>
+                {
+                    canAttack = (bool)data;
+                });
+            }
+
+            return canAttack;
+        }
+    }
 
     Mod fpsModels;
     Animator fpsModelsAnimator;
@@ -518,7 +534,11 @@ public class FPSWeaponClone : MonoBehaviour
         hasCurrentAttackHit = false;
         animatingCancel = false;
 
-        DaggerfallUnityItem shield = GameManager.Instance.PlayerEntity.ItemEquipTable.GetItem(EquipSlots.LeftHand);
+        bool specialUnarmed = (currentWeaponType == WeaponTypes.Melee || currentWeaponType == WeaponTypes.Werecreature) && state == WeaponStates.StrikeLeft;
+
+        DaggerfallUnityItem offhand = GameManager.Instance.PlayerEntity.ItemEquipTable.GetItem(EquipSlots.LeftHand);
+
+        //Debug.Log("FPSWEAPONCLONE - SWING LENGTH IS " + (GetAnimTickTime()*5).ToString());
 
         float tickTime = (GetAnimTickTime()/5)/swingSpeed;
 
@@ -533,8 +553,16 @@ public class FPSWeaponClone : MonoBehaviour
         {
             fpsModelsAnimator.CrossFadeInFixedTime(animGroup + state.ToString() + "_Start", 0.2f / swingSpeed);
 
-            if (shield != null && shield.IsShield)
-                fpsModelsAnimator.CrossFadeInFixedTime(GetShieldAnimationGroup(shield) + "Start", 0.25f);
+            if (offhand != null)
+            {
+                if (offhand.IsShield)
+                    fpsModelsAnimator.CrossFadeInFixedTime(GetShieldAnimationGroup(offhand) + "Start", 0.25f, 1);
+            }
+            else
+            {
+                if (GameManager.Instance.PlayerEntity.LightSource != null && ScreenWeapon.SpecificWeapon != null && ItemEquipTable.GetItemHands(ScreenWeapon.SpecificWeapon) != ItemHands.Both)
+                    fpsModelsAnimator.CrossFadeInFixedTime(GetLightSourceAnimationGroup(GameManager.Instance.PlayerEntity.LightSource) + "Sheathe", 0.25f, 2);
+            }
         }
 
         if (swingRecoveryOverride && CheckForRecoveryOverride())
@@ -579,7 +607,7 @@ public class FPSWeaponClone : MonoBehaviour
             }
             else
                 currentFrame = -1;
-            yield return new WaitForEndOfFrame();
+            yield return null;
         }
 
         ChangeWeaponState(state);
@@ -612,7 +640,7 @@ public class FPSWeaponClone : MonoBehaviour
         }
 
         //yield return new WaitForSeconds(tickTime);
-        yield return new WaitForEndOfFrame();
+        yield return null;
 
         //play the swing animation
         if (hasCurrentAttackHit)
@@ -642,7 +670,8 @@ public class FPSWeaponClone : MonoBehaviour
         }
         else
         {
-            while (currentFrame < weaponAnims[(int)weaponState].NumFrames - 1)
+            int lastframe = specialUnarmed ? weaponAnims[(int)weaponState].NumFrames - 2 : weaponAnims[(int)weaponState].NumFrames - 1;
+            while (currentFrame < lastframe)
             {
                 offsetTarget = Vector2.zero;
                 offsetCurrent = Vector2.zero;
@@ -662,7 +691,7 @@ public class FPSWeaponClone : MonoBehaviour
 
         while (ScreenWeapon.IsAttacking())
         {
-            if (recoveryOverride || hasCurrentAttackHit)
+            if (recoveryOverride || hasCurrentAttackHit || specialUnarmed)
             {
                 /*if (ArmsAnimator)
                     ArmsAnimator.CrossFadeInFixedTime("Recoil",0.1f,0);*/
@@ -682,7 +711,7 @@ public class FPSWeaponClone : MonoBehaviour
                 else
                     currentFrame = -1;
 
-                yield return new WaitForEndOfFrame();
+                yield return null;
             }
             else
             {
@@ -691,7 +720,7 @@ public class FPSWeaponClone : MonoBehaviour
                 else
                     currentFrame = -1;
 
-                    yield return new WaitForEndOfFrame();
+                    yield return null;
             }
         }
 
@@ -705,8 +734,16 @@ public class FPSWeaponClone : MonoBehaviour
             else
                 fpsModelsAnimator.CrossFadeInFixedTime(animGroup + state.ToString() + "_Recovery", 0.25f);
 
-            if (shield != null && shield.IsShield)
-                fpsModelsAnimator.CrossFadeInFixedTime(GetShieldAnimationGroup(shield) + "Recovery", 0.25f);
+            if (offhand != null)
+            {
+                if (offhand.IsShield)
+                    fpsModelsAnimator.CrossFadeInFixedTime(GetShieldAnimationGroup(offhand) + "Recovery", 0.25f, 1);
+            }
+            else
+            {
+                if (GameManager.Instance.PlayerEntity.LightSource != null && ScreenWeapon.SpecificWeapon != null && ItemEquipTable.GetItemHands(ScreenWeapon.SpecificWeapon) != ItemHands.Both)
+                    fpsModelsAnimator.CrossFadeInFixedTime(GetLightSourceAnimationGroup(GameManager.Instance.PlayerEntity.LightSource) + "Draw", 0.25f, 2);
+            }
         }
 
         //set current offset
@@ -733,12 +770,15 @@ public class FPSWeaponClone : MonoBehaviour
         hasCurrentAttackHit = false;
         animatingCancel = false;
 
+        bool specialUnarmed = (currentWeaponType == WeaponTypes.Melee || currentWeaponType == WeaponTypes.Werecreature) && state == WeaponStates.StrikeLeft;
+
         float tickTime = GetAnimTickTime();
 
         ChangeWeaponState(state);
         //yield return new WaitForSeconds(tickTime);
 
-        while (currentFrame < weaponAnims[(int)weaponState].NumFrames - 1 && !hasCurrentAttackHit)
+        int lastframe = specialUnarmed ? weaponAnims[(int)weaponState].NumFrames - 2 : weaponAnims[(int)weaponState].NumFrames - 1;
+        while (currentFrame < lastframe && !hasCurrentAttackHit)
         {
             offsetTarget = Vector2.zero;
             offsetCurrent = Vector2.zero;
@@ -775,6 +815,7 @@ public class FPSWeaponClone : MonoBehaviour
             yield return new WaitForSeconds(tickTime);
         }
 
+        //recoil backwards on hit
         while (currentFrame > 0 && hasCurrentAttackHit)
         {
             offsetTarget = Vector2.zero;
@@ -789,14 +830,29 @@ public class FPSWeaponClone : MonoBehaviour
             yield return new WaitForSeconds(tickTime);
         }
 
+        //wait for end of attack
         while (ScreenWeapon.IsAttacking())
         {
-            if (swingRecovery == 1)
-                currentFrame = weaponAnims[(int)weaponState].NumFrames - 1;
-            else
-                currentFrame = -1;
+            if (specialUnarmed && currentFrame > 0)
+            {
+                //play animation backwards
+                offsetTarget = Vector2.zero;
+                offsetCurrent = Vector2.zero;
 
-            yield return new WaitForEndOfFrame();
+                currentFrame--;
+                UpdateWeapon();
+
+                yield return new WaitForSeconds(tickTime);
+            }
+            else
+            {
+                if (swingRecovery == 1)
+                    currentFrame = weaponAnims[(int)weaponState].NumFrames - 1;
+                else
+                    currentFrame = -1;
+
+                yield return null;
+            }
         }
 
         //reset to idle
@@ -858,7 +914,7 @@ public class FPSWeaponClone : MonoBehaviour
                 else
                 {
                     drawTimer += Time.deltaTime;
-                    yield return new WaitForEndOfFrame();
+                    yield return null;
                 }
             }
 
@@ -897,7 +953,7 @@ public class FPSWeaponClone : MonoBehaviour
 
                     timerCooldown += Time.deltaTime;
 
-                    yield return new WaitForEndOfFrame();
+                    yield return null;
                 }
             }
             else
@@ -944,7 +1000,7 @@ public class FPSWeaponClone : MonoBehaviour
             while (ScreenWeapon.IsAttacking())
             {
                 offsetTarget = Vector2.up;
-                yield return new WaitForEndOfFrame();
+                yield return null;
             }
 
             //reset to idle
@@ -997,7 +1053,7 @@ public class FPSWeaponClone : MonoBehaviour
                 else
                 {
                     drawTimer += Time.deltaTime;
-                    yield return new WaitForEndOfFrame();
+                    yield return null;
                 }
             }
 
@@ -1058,7 +1114,7 @@ public class FPSWeaponClone : MonoBehaviour
             while (Time.time < cooldownTime)
             {
                 offsetTarget = Vector2.up;
-                yield return new WaitForEndOfFrame();
+                yield return null;
             }
 
             //reset to idle
@@ -1109,7 +1165,7 @@ public class FPSWeaponClone : MonoBehaviour
             while (Time.time < cooldownTime)
             {
                 offsetTarget = Vector2.up;
-                yield return new WaitForEndOfFrame();
+                yield return null;
             }
 
             //reset to idle
@@ -1304,8 +1360,15 @@ public class FPSWeaponClone : MonoBehaviour
             weaponPositionOffset.y = Snapping.Snap(weaponPositionOffset.y, length);
         }
 
-        //stop the texture from going higher than its bottom edge
-        weaponPositionOffset.y = Mathf.Clamp(weaponPositionOffset.y, screenRect.height - weaponPositionOffset.height - weaponOffsetHeight, screenRect.height);
+        //stop the texture from going higher than its bottom or side edge when idle
+        if (weaponState == WeaponStates.Idle)
+        {
+            weaponPositionOffset.y = Mathf.Clamp(weaponPositionOffset.y, screenRect.height - weaponPositionOffset.height - weaponOffsetHeight, screenRect.height);
+            if (mirror)
+                weaponPositionOffset.x = Mathf.Clamp(weaponPositionOffset.x, screenRect.x - weaponPositionOffset.width, screenRect.x);
+            else
+                weaponPositionOffset.x = Mathf.Clamp(weaponPositionOffset.x, screenRect.x + screenRect.width - weaponPositionOffset.width, screenRect.x + screenRect.width);
+        }
 
         return weaponPositionOffset;
     }
@@ -1541,7 +1604,7 @@ public class FPSWeaponClone : MonoBehaviour
         {
             if (!attacking)
             {
-                if (!unsheathed)
+                if (!unsheathed || !CanAttackTOB)
                     offsetTarget = Vector2.one * 2;
                 else
                     offsetTarget = Vector2.zero;
@@ -1579,7 +1642,7 @@ public class FPSWeaponClone : MonoBehaviour
             canBob = true;
 
 
-        if (bob && canBob)
+        if (bob && canBob && (unsheathed || fpsModels != null))
         {
             //SHAPE OF MOVE BOB
             float bobYOffset = bobShape;
@@ -1641,7 +1704,7 @@ public class FPSWeaponClone : MonoBehaviour
         }
 
         //inertia
-        if (inertia)
+        if (inertia && (unsheathed || fpsModels != null))
         {
             if (weaponState == WeaponStates.Idle)
             {
@@ -1754,7 +1817,7 @@ public class FPSWeaponClone : MonoBehaviour
         try
         {
             bool isImported = customTextures.TryGetValue(MaterialReader.MakeTextureKey(0, (byte)weaponAnimRecordIndex, (byte)currentFrame), out curCustomTexture);
-            if (ScreenWeapon.FlipHorizontal && (weaponState == WeaponStates.Idle || weaponState == WeaponStates.StrikeDown || weaponState == WeaponStates.StrikeUp))
+            if (ScreenWeapon.FlipHorizontal && ((weaponState == WeaponStates.Idle || weaponState == WeaponStates.StrikeDown || weaponState == WeaponStates.StrikeUp) || currentWeaponType == WeaponTypes.Melee))
             {
                 // Mirror weapon rect
                 if (isImported)
@@ -1977,6 +2040,9 @@ public class FPSWeaponClone : MonoBehaviour
 
     string GetWeaponAnimationGroup(DaggerfallUnityItem weapon)
     {
+        if (GameManager.Instance.PlayerEffectManager.IsTransformedLycanthrope())
+            return "Lycan_";
+
         if (weapon != null)
         {
         switch (weapon.TemplateIndex)
@@ -2028,6 +2094,23 @@ public class FPSWeaponClone : MonoBehaviour
                 case (int)Armor.Kite_Shield:
                 case (int)Armor.Tower_Shield:
                     return "ShieldArm_";
+            }
+        }
+
+        return "Unarmed_";
+    }
+
+    string GetLightSourceAnimationGroup(DaggerfallUnityItem lightSource)
+    {
+        if (lightSource != null)
+        {
+            switch (lightSource.TemplateIndex)
+            {
+                case (int)UselessItems2.Torch:
+                case (int)UselessItems2.Candle:
+                    return "LightTorch_";
+                case (int)UselessItems2.Lantern:
+                    return "LightLantern_";
             }
         }
 
@@ -2219,32 +2302,24 @@ public class FPSWeaponClone : MonoBehaviour
 
     bool CheckForRecoveryOverride()
     {
-        bool hasOverride = false;
-
         if (weaponState != WeaponStates.StrikeUp)
-            return hasOverride;
+            return false;
 
-        //bare hand
         if (SpecificWeapon == null)
-        {
-            /*if (weaponState == WeaponStates.StrikeLeft)
-                hasOverride = true;*/
-        }
-        else
-        {
-            if (customWeaponOverrides.ContainsKey(SpecificWeapon.TemplateIndex))
-                return customWeaponOverrides[SpecificWeapon.TemplateIndex].OverrideRecovery;
+            return false;
 
-            WeaponTypes weaponType = GameManager.Instance.ItemHelper.ConvertItemToAPIWeaponType(SpecificWeapon);
+        if (customWeaponOverrides.ContainsKey(SpecificWeapon.TemplateIndex))
+            return customWeaponOverrides[SpecificWeapon.TemplateIndex].OverrideRecovery;
 
-            //if (weaponType != WeaponTypes.Dagger && weaponType != WeaponTypes.Dagger_Magic && weaponType != WeaponTypes.Flail && weaponType != WeaponTypes.Flail_Magic)
-            if (weaponType != WeaponTypes.Dagger && weaponType != WeaponTypes.Dagger_Magic)
-            {
-                hasOverride = true;
-            }
+        WeaponTypes weaponType = GameManager.Instance.ItemHelper.ConvertItemToAPIWeaponType(SpecificWeapon);
+
+        //if (weaponType != WeaponTypes.Dagger && weaponType != WeaponTypes.Dagger_Magic && weaponType != WeaponTypes.Flail && weaponType != WeaponTypes.Flail_Magic)
+        if (weaponType != WeaponTypes.Dagger && weaponType != WeaponTypes.Dagger_Magic)
+        {
+            return true;
         }
 
-        return hasOverride;
+        return false;
     }
 
     public void PlayUnsheatheSound()

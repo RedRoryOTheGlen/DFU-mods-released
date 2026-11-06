@@ -4,18 +4,13 @@ using System.IO;
 using System.Reflection;
 using UnityEngine;
 using DaggerfallWorkshop.Game.Utility.ModSupport;
+using HarmonyLib;
 
 namespace AlternativeLargeHUDMod
 {
     public static class AlternativeLargeHUDPatches
     {
-        private const string HarmonyAssemblyPath = "Mods/0Harmony.dll";
-        private const string HarmonyPatchId = "alternativelargehud.playernotebook.patch";
-
-        private static object harmonyInstance;
-        private static MethodInfo patchMethod;
-        private static ConstructorInfo harmonyMethodCtor;
-        private static Type harmonyMethodType;
+        public static Harmony harmony;
 
         #region New Methods
 
@@ -49,17 +44,9 @@ namespace AlternativeLargeHUDMod
 
         public static bool TryApplyPatch()
         {
-            string harmonyPath = Path.Combine(Application.streamingAssetsPath, HarmonyAssemblyPath);
-
-            if (!File.Exists(harmonyPath))
-            {
-                Debug.LogError($"Harmony: {harmonyPath} not found");
-                return false;
-            }
-
             try
             {
-                Setup(harmonyPath);
+                harmony = new Harmony("AlternativeLargeHUD");
 
                 PatchAddMessage();
                 PatchGetHoverText();
@@ -74,24 +61,6 @@ namespace AlternativeLargeHUDMod
             }
         }
 
-        private static void Setup(string harmonyPath)
-        {
-            Assembly harmonyAssembly = GetHarmonyAssembly(harmonyPath);
-            Type harmonyType = harmonyAssembly.GetType("HarmonyLib.Harmony");
-            harmonyMethodType = harmonyAssembly.GetType("HarmonyLib.HarmonyMethod");
-
-            harmonyInstance = Activator.CreateInstance(harmonyType, new object[] { HarmonyPatchId });
-
-            patchMethod = harmonyType.GetMethod("Patch");
-            harmonyMethodCtor = harmonyMethodType.GetConstructor(new Type[] { typeof(MethodInfo) });
-        }
-
-        private static Assembly GetHarmonyAssembly(string harmonyPath)
-        {
-            byte[] dllData = File.ReadAllBytes(harmonyPath);
-            return Assembly.Load(dllData);
-        }
-
         private static void PatchAddMessage()
         {
             MethodInfo targetMethod = typeof(DaggerfallWorkshop.Game.Player.PlayerNotebook)
@@ -100,14 +69,7 @@ namespace AlternativeLargeHUDMod
             MethodInfo prefixMethod = typeof(AlternativeLargeHUDPatches)
                 .GetMethod("Prefix_AddMessage", BindingFlags.Public | BindingFlags.Static);
 
-            object harmonyPrefix = harmonyMethodCtor.Invoke(new object[] { prefixMethod });
-
-            patchMethod.Invoke(harmonyInstance, new object[]
-            {
-                targetMethod,
-                harmonyPrefix,
-                null, null, null
-            });
+            harmony.Patch(original: targetMethod, prefix: new HarmonyMethod(prefixMethod));
 
             Debug.Log("Harmony: AddMessage() patched successfully.");
         }
@@ -125,16 +87,7 @@ namespace AlternativeLargeHUDMod
             MethodInfo postFixMethod = typeof(AlternativeLargeHUDPatches)
                 .GetMethod("Postfix_GetHoverText", BindingFlags.Public | BindingFlags.Static);
 
-            object harmonyPostFix = harmonyMethodCtor.Invoke(new object[] { postFixMethod });
-
-            patchMethod.Invoke(harmonyInstance, new object[]
-            {
-                targetMethod,
-                null,
-                harmonyPostFix,
-                null,
-                null
-            });
+            harmony.Patch(original: targetMethod, postfix: new HarmonyMethod(postFixMethod));
 
             Debug.Log("Harmony: GetHoverText() patched successfully.");
         }

@@ -2095,7 +2095,7 @@ GameObject:
   - component: {fileID: 3192502689351056420}
   - component: {fileID: 6171427087511159935}
   m_Layer: 0
-  m_Name: Trireme
+  m_Name: TriremeHull
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

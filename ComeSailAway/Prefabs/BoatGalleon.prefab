@@ -2037,7 +2037,7 @@ GameObject:
   - component: {fileID: 2128682913636134991}
   - component: {fileID: 66937678579260552}
   m_Layer: 0
-  m_Name: Galleon
+  m_Name: GalleonHull
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

@@ -67,6 +67,31 @@ namespace UnmobilizerMod
 
         float moveStrafeMod = 0.75f;
         float moveReverseMod = 0.5f;
+
+        float moveUnsheathedMod = 0.75f;
+        float moveUnsheathedModFinal
+        {
+            get
+            {
+                if (!weaponManager.Sheathed)
+                    return moveUnsheathedMod;
+
+                return 1;
+            }
+        }
+
+        float moveCrouchedMod = 0.5f;
+        float moveCrouchedModFinal
+        {
+            get
+            {
+                if (motor.IsCrouching)
+                    return moveCrouchedMod;
+
+                return 1;
+            }
+        }
+
         bool moveWeaponOnly;
 
         bool ride;
@@ -84,6 +109,7 @@ namespace UnmobilizerMod
         bool lastLevitating = false;
         bool lastWaterwalking = false;
         bool lastSheathed = false;
+        bool lastCrouched = false;
 
         private void Start()
         {
@@ -105,6 +131,8 @@ namespace UnmobilizerMod
                 moveStrafeMod = settings.GetValue<int>("Movement", "StrafeMultiplier") / 100f;
                 moveReverseMod = settings.GetValue<int>("Movement", "ReverseMultiplier") / 100f;
                 moveWeaponOnly = settings.GetValue<bool>("Movement", "OnlyWhenUnsheathed");
+                moveUnsheathedMod = settings.GetValue<int>("Movement", "UnsheathedMultiplier") / 100f;
+                moveCrouchedMod = settings.GetValue<int>("Movement", "CrouchedMultiplier") / 100f;
             }
             if (change.HasChanged("Slowing"))
             {
@@ -143,6 +171,7 @@ namespace UnmobilizerMod
             lastSlowed = !isSlowed;
             lastWaterwalking = !(motor.OnExteriorWater == PlayerMotor.OnExteriorWaterMethod.WaterWalking || (motor.IsSwimming && entity.IsWaterWalking) ? true : false);
             lastSheathed = !weaponManager.Sheathed;
+            lastCrouched = !motor.IsCrouching;
         }
 
         private void LateUpdate()
@@ -155,21 +184,23 @@ namespace UnmobilizerMod
             bool levitating = motor.IsLevitating;
             bool waterwalking = entity.IsWaterWalking && (motor.IsSwimming || motor.OnExteriorWater == PlayerMotor.OnExteriorWaterMethod.WaterWalking) ? true : false;
             bool sheathed = weaponManager.Sheathed;
+            bool crouched = motor.IsCrouching;
 
             if (!riding && !levitating && !waterwalking)
             {
                 //player stopped riding/levitating/waterwalking
-                if (riding != lastRiding || levitating != lastLevitating || waterwalking != lastWaterwalking)
+                if (riding != lastRiding || levitating != lastLevitating || waterwalking != lastWaterwalking || sheathed != lastSheathed || crouched != lastCrouched)
                 {
-                    InputManager.Instance.PosVerticalLimit = 1;
-                    InputManager.Instance.NegHorizontalLimit = 1 * moveStrafeMod;
-                    InputManager.Instance.PosHorizontalLimit = 1 * moveStrafeMod;
-                    InputManager.Instance.NegVerticalLimit = 1 * moveReverseMod;
+                    InputManager.Instance.PosVerticalLimit = 1 * moveUnsheathedModFinal * moveCrouchedModFinal;
+                    InputManager.Instance.NegHorizontalLimit = 1 * moveStrafeMod * moveUnsheathedModFinal * moveCrouchedModFinal;
+                    InputManager.Instance.PosHorizontalLimit = 1 * moveStrafeMod * moveUnsheathedModFinal * moveCrouchedModFinal;
+                    InputManager.Instance.NegVerticalLimit = 1 * moveReverseMod * moveUnsheathedModFinal * moveCrouchedModFinal;
 
                     lastRiding = riding;
                     lastLevitating = levitating;
                     lastWaterwalking = waterwalking;
                     lastSheathed = sheathed;
+                    lastCrouched = crouched;
                 }
 
                 //when to prevent run
@@ -182,17 +213,17 @@ namespace UnmobilizerMod
                 {
                     if (isSlowed)
                     {
-                        InputManager.Instance.PosVerticalLimit = 1 * slowedMod;
-                        InputManager.Instance.NegHorizontalLimit = 1 * moveStrafeMod * slowedMod;
-                        InputManager.Instance.PosHorizontalLimit = 1 * moveStrafeMod * slowedMod;
-                        InputManager.Instance.NegVerticalLimit = 1 * moveReverseMod * slowedMod;
+                        InputManager.Instance.PosVerticalLimit = 1 * slowedMod * moveUnsheathedModFinal * moveCrouchedModFinal;
+                        InputManager.Instance.NegHorizontalLimit = 1 * moveStrafeMod * slowedMod * moveUnsheathedModFinal * moveCrouchedModFinal;
+                        InputManager.Instance.PosHorizontalLimit = 1 * moveStrafeMod * slowedMod * moveUnsheathedModFinal * moveCrouchedModFinal;
+                        InputManager.Instance.NegVerticalLimit = 1 * moveReverseMod * slowedMod * moveUnsheathedModFinal * moveCrouchedModFinal;
                     }
                     else
                     {
-                        InputManager.Instance.PosVerticalLimit = 1;
-                        InputManager.Instance.NegHorizontalLimit = 1 * moveStrafeMod;
-                        InputManager.Instance.PosHorizontalLimit = 1 * moveStrafeMod;
-                        InputManager.Instance.NegVerticalLimit = 1 * moveReverseMod;
+                        InputManager.Instance.PosVerticalLimit = 1 * moveUnsheathedModFinal * moveCrouchedModFinal;
+                        InputManager.Instance.NegHorizontalLimit = 1 * moveStrafeMod * moveUnsheathedModFinal * moveCrouchedModFinal;
+                        InputManager.Instance.PosHorizontalLimit = 1 * moveStrafeMod * moveUnsheathedModFinal * moveCrouchedModFinal;
+                        InputManager.Instance.NegVerticalLimit = 1 * moveReverseMod * moveUnsheathedModFinal * moveCrouchedModFinal;
                     }
                     lastSlowed = slowed;
                 }
@@ -230,6 +261,7 @@ namespace UnmobilizerMod
                     lastLevitating = levitating;
                     lastWaterwalking = waterwalking;
                     lastSheathed = sheathed;
+                    lastCrouched = crouched;
                     lastTransportMode = transportMode;
                 }
             }

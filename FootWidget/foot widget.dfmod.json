@@ -1,0 +1,15 @@
+{
+    "ModTitle": "Basic Boot",
+    "ModVersion": "1.0",
+    "ModAuthor": "RedRoryOTheGlen",
+    "ContactInfo": "rmufrancisco@gmail.com",
+    "DFUnity_Version": "1.1.1",
+    "ModDescription": "KICK EM IN THE SHIN, KICK EM IN THE HEAD, KICK EM AGAIN, DAT CRITTER AIN'T DEAD",
+    "GUID": "2ebe4963-801a-45bd-bb8b-fb44305589bb",
+    "Files": [
+        "Assets/Game/Mods/FootWidget/Scripts/FPSWeaponStandalone.cs",
+        "Assets/Game/Mods/FootWidget/Scripts/FootWidget.cs",
+        "Assets/Game/Mods/FootWidget/modsettings.json",
+        "Assets/Game/Mods/FootWidget/foot widget.dfmod.json"
+    ]
+}

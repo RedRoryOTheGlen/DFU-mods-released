@@ -217,9 +217,17 @@ public class HorseRidingOverhaul : MonoBehaviour
     float TextureScaleFactor = 1;
 
     //visual
-    int rideIndex = 0;
+    int rideIndex = 0;  //vanilla, horse medium, horse draft, horse pony 
     int variantIndex = 0;
-    int camelArchive = 10002;
+    int rideArchive = 10002;
+    int horseMediumArchiveStart = 23;   //20 variants
+    int horseMediumArchiveEnd = 43;
+    int horseDraftArchiveStart = 6;     //16 variants
+    int horseDraftArchiveEnd = 22;
+    int horsePonyArchiveStart = 44;     //11 variants
+    int horsePonyArchiveEnd = 55;
+    int camelArchiveStart = 1;          //5 variants
+    int camelArchiveEnd = 5;
 
     //override
     int rideIndexMod = -1;
@@ -819,7 +827,7 @@ public class HorseRidingOverhaul : MonoBehaviour
                     // Setup appropriate riding textures.
 
                     string textureName;
-                    if (rideIndex > 0)
+                    /*if (rideIndex > 0)
                     {
                         int modeOffset = (transportManager.TransportMode == TransportModes.Horse) ? 0 : 1;
                         int record = (variantIndex * 2) + modeOffset;
@@ -831,6 +839,61 @@ public class HorseRidingOverhaul : MonoBehaviour
                             {
                                 Texture2D texture;
                                 DaggerfallWorkshop.Utility.AssetInjection.TextureReplacement.TryImportTexture(camelArchive, record, i, out texture);
+                                ridingTextures[i] = texture;
+                                ridingTextures[i].filterMode = DaggerfallUnity.Instance.MaterialReader.MainFilterMode;
+                            }
+
+                            ridingTexture = ridingTextures[0];
+                            lastTextureName = textureName;
+                        }
+                    }
+                    else
+                    {
+                        textureName = (transportManager.TransportMode == TransportModes.Horse) ? horseTextureName : cartTextureName;
+                        if (textureName != lastTextureName)
+                        {
+                            for (int i = 0; i < 4; i++)
+                            {
+                                ridingTextures[i] = ImageReader.GetImageData(textureName, 0, i, true, true).texture;
+                                ridingTextures[i].filterMode = DaggerfallUnity.Instance.MaterialReader.MainFilterMode;
+                            }
+
+                            ridingTexture = ridingTextures[0];
+                            lastTextureName = textureName;
+                        }
+                    }*/
+
+                    if (rideIndex > 0)
+                    {
+                        int modeOffset = (transportManager.TransportMode == TransportModes.Horse) ? 0 : 1;
+                        int startOffset = horseMediumArchiveStart;
+                        int endingIndex = horseMediumArchiveEnd;
+                        if (rideIndex == 4) //camel
+                        {
+                            startOffset = camelArchiveStart;
+                            endingIndex = camelArchiveEnd;
+                        }
+                        else if (rideIndex == 3)
+                        {
+                            startOffset = horsePonyArchiveStart;
+                            endingIndex = horsePonyArchiveEnd;
+                        }
+                        else if (rideIndex == 2)
+                        {
+                            startOffset = horseDraftArchiveStart;
+                            endingIndex = horseDraftArchiveEnd;
+                        }
+
+                        int archive = rideArchive + modeOffset;
+                        int record = Mathf.Clamp(variantIndex+startOffset,startOffset,endingIndex);
+                        textureName = archive.ToString() + record.ToString();
+                        Debug.Log("FREE REIN - Riding record is " + record.ToString());
+                        if (textureName != lastTextureName)
+                        {
+                            for (int i = 0; i < 4; i++)
+                            {
+                                Texture2D texture;
+                                DaggerfallWorkshop.Utility.AssetInjection.TextureReplacement.TryImportTexture(archive, record, i, out texture);
                                 ridingTextures[i] = texture;
                                 ridingTextures[i].filterMode = DaggerfallUnity.Instance.MaterialReader.MainFilterMode;
                             }
@@ -1156,7 +1219,7 @@ public class HorseRidingOverhaul : MonoBehaviour
                             //play rear up noise
                             if (customAudio && Time.time - lastCollision > 2)
                             {
-                                if ((rideIndexMod < 0 && rideIndex == 1) || rideIndexMod == 1)    //camel
+                                if ((rideIndexMod < 0 && rideIndex == 4) || rideIndexMod == 4)    //camel
                                     dfAudioSource.AudioSource.PlayOneShot(audioCamelCollision[UnityEngine.Random.Range(0, audioCamelCollision.Length)], 0.5f * DaggerfallUnity.Settings.SoundVolume * customAudioVolume);
                                 else
                                     dfAudioSource.AudioSource.PlayOneShot(audioHorseCollision[UnityEngine.Random.Range(0, audioHorseCollision.Length)], 0.5f * DaggerfallUnity.Settings.SoundVolume * customAudioVolume);
@@ -1218,7 +1281,7 @@ public class HorseRidingOverhaul : MonoBehaviour
                     {
                         if (!isStaminaDrained)
                         {
-                            if ((rideIndexMod < 0 && rideIndex == 1) || rideIndexMod == 1)    //camel
+                            if ((rideIndexMod < 0 && rideIndex == 4) || rideIndexMod == 4)    //camel
                                 dfAudioSource.AudioSource.PlayOneShot(audioCamelWinded[UnityEngine.Random.Range(0, audioCamelWinded.Length)], 0.5f * DaggerfallUnity.Settings.SoundVolume * customAudioVolume);
                             else
                                 dfAudioSource.AudioSource.PlayOneShot(audioHorseWinded[UnityEngine.Random.Range(0, audioHorseWinded.Length)], 0.5f * DaggerfallUnity.Settings.SoundVolume * customAudioVolume);
@@ -1399,7 +1462,7 @@ public class HorseRidingOverhaul : MonoBehaviour
         // Handle horse & cart riding animation & sounds.
         if (transportManager.TransportMode == TransportModes.Horse || transportManager.TransportMode == TransportModes.Cart)
         {
-            if ((playerMotor.IsStandingStill && targetYaw == 0) || !playerMotor.IsGrounded || GameManager.IsGamePaused || SaveLoadManager.Instance.LoadInProgress)
+            if ((playerMotor.IsStandingStill && targetYaw == 0) || GameManager.IsGamePaused || SaveLoadManager.Instance.LoadInProgress)
             {   // Stop animation frames and sound playing.
                 lastFrameTime = 0;
                 frameIndex = 0;
@@ -1446,131 +1509,142 @@ public class HorseRidingOverhaul : MonoBehaviour
                 if (transportManager.RidingVolumeScale > 0)
                     transportManager.RidingVolumeScale = 0;
 
-                if (customAudio)
+                if (!playerMotor.IsGrounded || playerMotor.OnExteriorWater == PlayerMotor.OnExteriorWaterMethod.Swimming)
                 {
-                    // refresh audio volume to reflect global changes
-                    float volumeScale = 0.5f * sneakMod;
-                    ridingAudioSource.volume = volumeScale * DaggerfallUnity.Settings.SoundVolume * customAudioVolume;
-
-                    //play cart sounds
-                    if (transportManager.TransportMode == TransportModes.Cart)
+                    //stop playing audio if player isn't grounded or is swimming
+                    if (ridingAudioSource.isPlaying)
                     {
-                        if (isTravelling)
-                        {
-                            if (ridingAudioSource.isPlaying)
-                            {
-                                ridingAudioSource.Stop();
-                            }
-                        }
-                        else if (!ridingAudioSource.isPlaying)
-                        {
-                            ridingAudioSource.loop = true;
-                            ridingAudioSource.Play();
-                        }
+                        ridingAudioSource.Stop();
                     }
-
-                    //Set gait depending on throttle type and speed
-                    bool[] gait = currentGait;
-                    if (currentGait == null)
-                        gait = gait1;
-                    sprint = false;
-
-                    if (transportManager.TransportMode == TransportModes.Cart)
-                    {
-                        //Carts can't gallop or reverse
-                        if (currentThrottle >= 1)
-                        {
-                            gait = gait3;
-                            sprint = false;
-                        }
-                        else if (currentThrottle >= 0.5f)
-                        {
-                            gait = gait2;
-                            sprint = false;
-                        }
-                        else if (currentThrottle >= 0.25f)
-                        {
-                            gait = gait1;
-                            sprint = false;
-                        }
-                        else
-                        {
-                            gait = gait1;
-                            sprint = false;
-                        }
-                    }
-                    else
-                    {
-                        if (currentThrottle >= 1 && running)
-                        {
-                            gait = gait5;
-                            sprint = true;
-                        }
-                        else if (currentThrottle >= 1 || (currentThrottle >= 0.5f && running))
-                        {
-                            gait = gait4;
-                            sprint = true;
-                        }
-                        else if (currentThrottle >= 0.5f || (currentThrottle >= 0.25f && running))
-                        {
-                            gait = gait3;
-                            sprint = false;
-                        }
-                        else if (currentThrottle >= 0.25f)
-                        {
-                            gait = gait2;
-                            sprint = false;
-                        }
-                        else
-                        {
-                            gait = gait1;
-                            sprint = false;
-                        }
-                    }
-
-                    if (audioRiding == null || gait != currentGait)
-                        StartRidingAudio(gait);
                 }
                 else
                 {
-                    // Get appropriate hoof sound for horse
-                    if (transportManager.TransportMode == TransportModes.Horse)
+                    if (customAudio)
                     {
-                        //pendingStopRidingAudio = false;
+                        // refresh audio volume to reflect global changes
+                        float volumeScale = 0.5f * sneakMod;
+                        ridingAudioSource.volume = volumeScale * DaggerfallUnity.Settings.SoundVolume * customAudioVolume;
 
-                        if (currentThrottle * runMod * sneakMod < 0.6f && sprint)
+                        //play cart sounds
+                        if (transportManager.TransportMode == TransportModes.Cart)
                         {
-                            ridingAudioSource.clip = dfAudioSource.GetAudioClip((int)horseRidingSound1);
-                            sprint = false;
-                        }
-                        else if (currentThrottle * runMod * sneakMod >= 0.6f && !sprint)
-                        {
-                            ridingAudioSource.clip = dfAudioSource.GetAudioClip((int)horseRidingSound2);
-                            sprint = true;
+                            if (isTravelling)
+                            {
+                                if (ridingAudioSource.isPlaying)
+                                {
+                                    ridingAudioSource.Stop();
+                                }
+                            }
+                            else if (!ridingAudioSource.isPlaying)
+                            {
+                                ridingAudioSource.loop = true;
+                                ridingAudioSource.Play();
+                            }
                         }
 
-                        if (sprint)
-                            ridingAudioSource.pitch = ((Mathf.Abs(currentThrottle) * sneakMod * runMod) / 1f);
+                        //Set gait depending on throttle type and speed
+                        bool[] gait = currentGait;
+                        if (currentGait == null)
+                            gait = gait1;
+                        sprint = false;
+
+                        if (transportManager.TransportMode == TransportModes.Cart)
+                        {
+                            //Carts can't gallop or reverse
+                            if (currentThrottle >= 1)
+                            {
+                                gait = gait3;
+                                sprint = false;
+                            }
+                            else if (currentThrottle >= 0.5f)
+                            {
+                                gait = gait2;
+                                sprint = false;
+                            }
+                            else if (currentThrottle >= 0.25f)
+                            {
+                                gait = gait1;
+                                sprint = false;
+                            }
+                            else
+                            {
+                                gait = gait1;
+                                sprint = false;
+                            }
+                        }
                         else
-                            ridingAudioSource.pitch = ((Mathf.Abs(currentThrottle) * sneakMod * runMod) / 0.5f);
+                        {
+                            if (currentThrottle >= 1 && running)
+                            {
+                                gait = gait5;
+                                sprint = true;
+                            }
+                            else if (currentThrottle >= 1 || (currentThrottle >= 0.5f && running))
+                            {
+                                gait = gait4;
+                                sprint = true;
+                            }
+                            else if (currentThrottle >= 0.5f || (currentThrottle >= 0.25f && running))
+                            {
+                                gait = gait3;
+                                sprint = false;
+                            }
+                            else if (currentThrottle >= 0.25f)
+                            {
+                                gait = gait2;
+                                sprint = false;
+                            }
+                            else
+                            {
+                                gait = gait1;
+                                sprint = false;
+                            }
+                        }
+
+                        if (audioRiding == null || gait != currentGait)
+                            StartRidingAudio(gait);
                     }
-                    else if (transportManager.TransportMode == TransportModes.Cart)
+                    else
                     {
-                        sprint = true;
-                        ridingAudioSource.pitch = Mathf.Clamp(((Mathf.Abs(currentThrottle) * sneakMod * runMod) / 1f), 0.8f, 1);
-                    }
+                        // Get appropriate hoof sound for horse
+                        if (transportManager.TransportMode == TransportModes.Horse)
+                        {
+                            //pendingStopRidingAudio = false;
 
-                    if (playerMotor.IsStandingStill || strafeVector.sqrMagnitude > 0)
-                        ridingAudioSource.pitch = 0.5f;
+                            if (currentThrottle * runMod * sneakMod < 0.6f && sprint)
+                            {
+                                ridingAudioSource.clip = dfAudioSource.GetAudioClip((int)horseRidingSound1);
+                                sprint = false;
+                            }
+                            else if (currentThrottle * runMod * sneakMod >= 0.6f && !sprint)
+                            {
+                                ridingAudioSource.clip = dfAudioSource.GetAudioClip((int)horseRidingSound2);
+                                sprint = true;
+                            }
 
-                    // refresh audio volume to reflect global changes
-                    float volumeScale = 0.5f * sneakMod;
+                            if (sprint)
+                                ridingAudioSource.pitch = ((Mathf.Abs(currentThrottle) * sneakMod * runMod) / 1f);
+                            else
+                                ridingAudioSource.pitch = ((Mathf.Abs(currentThrottle) * sneakMod * runMod) / 0.5f);
+                        }
+                        else if (transportManager.TransportMode == TransportModes.Cart)
+                        {
+                            sprint = true;
+                            ridingAudioSource.pitch = Mathf.Clamp(((Mathf.Abs(currentThrottle) * sneakMod * runMod) / 1f), 0.8f, 1);
+                        }
 
-                    ridingAudioSource.volume = volumeScale * DaggerfallUnity.Settings.SoundVolume;
+                        if (playerMotor.IsStandingStill || strafeVector.sqrMagnitude > 0)
+                            ridingAudioSource.pitch = 0.5f;
 
-                    if (!ridingAudioSource.isPlaying)
-                    {
-                        ridingAudioSource.Play();
+                        // refresh audio volume to reflect global changes
+                        float volumeScale = 0.5f * sneakMod;
+
+                        ridingAudioSource.volume = volumeScale * DaggerfallUnity.Settings.SoundVolume;
+
+                        if (!ridingAudioSource.isPlaying)
+                        {
+                            ridingAudioSource.Play();
+                        }
                     }
                 }
             }
@@ -1579,7 +1653,7 @@ public class HorseRidingOverhaul : MonoBehaviour
             {
                 if (customAudio)
                 {
-                    if ((rideIndexMod < 0 && rideIndex == 1) || rideIndexMod == 1)    //camel
+                    if ((rideIndexMod < 0 && rideIndex == 4) || rideIndexMod == 4)    //camel
                         dfAudioSource.AudioSource.PlayOneShot(audioCamelNoise[UnityEngine.Random.Range(0, audioCamelNoise.Length)], 0.25f * DaggerfallUnity.Settings.SoundVolume * customAudioVolume);
                     else
                         dfAudioSource.AudioSource.PlayOneShot(audioHorseNoise[UnityEngine.Random.Range(0, audioHorseNoise.Length)], 0.25f * DaggerfallUnity.Settings.SoundVolume * customAudioVolume);
@@ -1737,7 +1811,7 @@ public class HorseRidingOverhaul : MonoBehaviour
         if (charging != null || tokenCurrent < 1 || transportManager.TransportMode == TransportModes.Cart)
         {
             //play winded noise
-            if ((rideIndexMod < 0 && rideIndex == 1) || rideIndexMod == 1)    //camel
+            if ((rideIndexMod < 0 && rideIndex == 4) || rideIndexMod == 4)    //camel
                 dfAudioSource.AudioSource.PlayOneShot(audioCamelWinded[UnityEngine.Random.Range(0, audioCamelWinded.Length)], 0.5f * DaggerfallUnity.Settings.SoundVolume * customAudioVolume);
             else
                 dfAudioSource.AudioSource.PlayOneShot(audioHorseWinded[UnityEngine.Random.Range(0, audioHorseWinded.Length)], 0.5f * DaggerfallUnity.Settings.SoundVolume * customAudioVolume);
@@ -1835,7 +1909,7 @@ public class HorseRidingOverhaul : MonoBehaviour
                 //play rear up noise
                 if (customAudio && Time.time - lastCollision > 2)
                 {
-                    if (rideIndex == 1 || rideIndexMod == 1)    //camel
+                    if (rideIndex == 4 || rideIndexMod == 4)    //camel
                         dfAudioSource.AudioSource.PlayOneShot(audioCamelCollision[UnityEngine.Random.Range(0, audioCamelCollision.Length)], 0.5f * DaggerfallUnity.Settings.SoundVolume * customAudioVolume);
                     else
                         dfAudioSource.AudioSource.PlayOneShot(audioHorseCollision[UnityEngine.Random.Range(0, audioHorseCollision.Length)], 0.5f * DaggerfallUnity.Settings.SoundVolume * customAudioVolume);

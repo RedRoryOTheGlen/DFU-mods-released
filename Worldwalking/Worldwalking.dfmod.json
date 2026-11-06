@@ -1,0 +1,66 @@
+{
+    "ModTitle": "WanderFall",
+    "ModVersion": "1.0.2",
+    "ModAuthor": "RedRoryOTheGlen",
+    "ContactInfo": "rmufrancisco@gmail.com",
+    "DFUnity_Version": "1.1.1",
+    "ModDescription": "Alternative overland travel system similar to classic CRPGs like Fallout with an encounter system powered by Warm Ashes.",
+    "GUID": "bd7febe8-cf0a-4de9-8d20-c5d53daceebf",
+    "Files": [
+        "Assets/Game/Mods/Worldwalking/Scripts/Worldwalking.cs",
+        "Assets/Game/Mods/Worldwalking/Scripts/BasicRoadsUtils.cs",
+        "Assets/Game/Mods/Worldwalking/Shaders/DaggerfallDefaultSplat.shader",
+        "Assets/Game/Mods/Worldwalking/Textures/buttonExit.png",
+        "Assets/Game/Mods/Worldwalking/Textures/buttonTimeScale0.png",
+        "Assets/Game/Mods/Worldwalking/Textures/panelButtons.png",
+        "Assets/Game/Mods/Worldwalking/Textures/buttonSpeed1.png",
+        "Assets/Game/Mods/Worldwalking/Textures/buttonTimeScale4.png",
+        "Assets/Game/Mods/Worldwalking/Textures/buttonTimeScale1.png",
+        "Assets/Game/Mods/Worldwalking/Textures/panelSpeed.png",
+        "Assets/Game/Mods/Worldwalking/Textures/buttonTimeScaleBase.png",
+        "Assets/Game/Mods/Worldwalking/Textures/panelVitals.png",
+        "Assets/Game/Mods/Worldwalking/Textures/buttonTimeScale3.png",
+        "Assets/Game/Mods/Worldwalking/Textures/buttonTimeScale5.png",
+        "Assets/Game/Mods/Worldwalking/Textures/buttonSpeed2.png",
+        "Assets/Game/Mods/Worldwalking/Textures/panelTime.png",
+        "Assets/Game/Mods/Worldwalking/Textures/buttonTimeScale2.png",
+        "Assets/Game/Mods/Worldwalking/Textures/buttonSpeed0.png",
+        "Assets/Game/Mods/Worldwalking/Textures/projectorTexture.png",
+        "Assets/Game/Mods/Worldwalking/Materials/projectorMaterial.mat",
+        "Assets/Game/Mods/Worldwalking/Textures/panelPins.png",
+        "Assets/Game/Mods/Worldwalking/Prefabs/Rain.prefab",
+        "Assets/Game/Mods/Worldwalking/Prefabs/Snow.prefab",
+        "Assets/Game/Mods/Worldwalking/modsettings.json",
+        "Assets/Game/Mods/Worldwalking/Worldwalking.dfmod.json",
+        "Assets/Game/Mods/Worldwalking/Scripts/MapWindowPanel.cs",
+        "Assets/Game/Mods/Worldwalking/Scripts/MapVitals.cs",
+        "Assets/Game/Mods/Worldwalking/Scripts/MapPopupText.cs",
+        "Assets/Game/Mods/Worldwalking/Scripts/Billboard.cs",
+        "Assets/Game/Mods/Worldwalking/Scripts/BillboardPlayer.cs",
+        "Assets/Game/Mods/Worldwalking/Scripts/BillboardMobile.cs",
+        "Assets/Game/Mods/Worldwalking/Scripts/WorldwalkingMobile.cs",
+        "Assets/Game/Mods/Worldwalking/Prefabs/MapFrame.prefab",
+        "Assets/Game/Mods/Worldwalking/Models/MapFrame.fbx",
+        "Assets/Game/Mods/Worldwalking/Textures/WODTerrain_height.png",
+        "Assets/Game/Mods/Worldwalking/Textures/panelNavigation.png",
+        "Assets/Game/Mods/Worldwalking/Textures/marker.png"
+    ],
+    "Dependencies": [
+        {
+            "Name": "daggerfall expanded textures",
+            "IsOptional": false,
+            "IsPeer": true,
+            "Version": "1.0.0"
+        },
+        {
+            "Name": "warm ashes - wilderness",
+            "IsOptional": false,
+            "IsPeer": true
+        },
+        {
+            "Name": "daggerfall enemy expansion",
+            "IsOptional": false,
+            "IsPeer": false
+        }
+    ]
+}

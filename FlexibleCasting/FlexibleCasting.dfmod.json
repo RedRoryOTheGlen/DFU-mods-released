@@ -1,0 +1,15 @@
+{
+    "ModTitle": "Convenient Casting",
+    "ModVersion": "1.1.1",
+    "ModAuthor": "RedRoryOTheGlen",
+    "ContactInfo": "rmufrancisco@gmail.com",
+    "DFUnity_Version": "1.1.1",
+    "ModDescription": "Customize your casting experience!",
+    "GUID": "ac6a77cf-abaa-4533-84ae-5374583f16fb",
+    "Files": [
+        "Assets/Game/Mods/FlexibleCasting/Scripts/FlexibleCasting.cs",
+        "Assets/Game/Mods/FlexibleCasting/modsettings.json",
+        "Assets/Game/Mods/FlexibleCasting/FlexibleCasting.dfmod.json",
+        "Assets/Game/Mods/FlexibleCasting/modpresets.json"
+    ]
+}

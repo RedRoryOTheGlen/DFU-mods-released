@@ -2191,7 +2191,7 @@ GameObject:
   - component: {fileID: 6329493274961190701}
   - component: {fileID: 7248112583039030530}
   m_Layer: 0
-  m_Name: Carrack
+  m_Name: CarrackHull
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
